@@ -51,6 +51,5 @@ def setup_directories():
         folder.mkdir(parents=True, exist_ok=True)
 
 # 7. Model CLIP
-CLIP_MODEL_NAME = (
-    "openai/clip-vit-base-patch32"
-)
+CLIP_MODEL_NAME = ("openai/clip-vit-base-patch32")
+CLIP_BATCH_SIZE = 32
