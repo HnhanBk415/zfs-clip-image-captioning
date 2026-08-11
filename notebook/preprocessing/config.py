@@ -49,3 +49,8 @@ TEST_RATIO = 0.10
 def setup_directories():
     for folder in [DATA_ROOT, RAW_DIR, SPLIT_DIR, SUBSET_DIR, FEATURE_DIR, METADATA_DIR]:
         folder.mkdir(parents=True, exist_ok=True)
+
+# 7. Model CLIP
+CLIP_MODEL_NAME = (
+    "openai/clip-vit-base-patch32"
+)
