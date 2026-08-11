@@ -1,0 +1,5 @@
+pandas
+matplotlib
+Pillow
+tqdm
+pyprojroot
