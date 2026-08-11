@@ -20,7 +20,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 # 2. Cấu hình Thư mục Dự án
-DATA_ROOT = PROJECT_ROOT / "data" / "flickr8k"
+DATA_ROOT = (PROJECT_ROOT/ "notebook"/ "data"/ "flickr8k")
 
 RAW_DIR = DATA_ROOT / "raw"
 SPLIT_DIR = DATA_ROOT / "splits"
