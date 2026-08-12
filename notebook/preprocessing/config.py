@@ -12,7 +12,11 @@ from tqdm import tqdm
 from pyprojroot.here import here
 import kagglehub
 from collections import Counter
-
+# Import thêm thư viện hỗ trợ model
+import torch
+import transformers
+from transformers import AutoTokenizer
+import numpy as np
 
 # 1. Thiết lập Root Directory và thêm vào sys.path
 PROJECT_ROOT = here()
@@ -20,15 +24,16 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 # 2. Cấu hình Thư mục Dự án
-DATA_ROOT = (PROJECT_ROOT/ "notebook"/ "data"/ "flickr8k")
+DATA_ROOT = PROJECT_ROOT / "notebook" / "data" / "flickr8k"
+
 
 RAW_DIR = DATA_ROOT / "raw"
 SPLIT_DIR = DATA_ROOT / "splits"
 SUBSET_DIR = DATA_ROOT / "subsets"
 FEATURE_DIR = DATA_ROOT / "features"
 METADATA_DIR = DATA_ROOT / "metadata"
+TOKENIZED_DIR = DATA_ROOT / "tokenized"
 
-OUTPUT_DIR = SPLIT_DIR
 
 # 3. Tải & Lưu trữ Dataset
 KAGGLE_DATASET_HANDLE = "adityajn105/flickr8k"
@@ -50,6 +55,12 @@ def setup_directories():
     for folder in [DATA_ROOT, RAW_DIR, SPLIT_DIR, SUBSET_DIR, FEATURE_DIR, METADATA_DIR]:
         folder.mkdir(parents=True, exist_ok=True)
 
+
 # 7. Model CLIP
 CLIP_MODEL_NAME = ("openai/clip-vit-base-patch32")
 CLIP_BATCH_SIZE = 32
+
+# GPT-2
+GPT2_MODEL_NAME = "openai-community/gpt2"
+GPT2_MAX_LENGTH = 48
+
