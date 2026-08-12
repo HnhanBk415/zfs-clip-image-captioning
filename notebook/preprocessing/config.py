@@ -26,6 +26,7 @@ if str(PROJECT_ROOT) not in sys.path:
 # 2. Cấu hình Thư mục Dự án
 DATA_ROOT = PROJECT_ROOT / "notebook" / "data" / "flickr8k"
 
+
 RAW_DIR = DATA_ROOT / "raw"
 SPLIT_DIR = DATA_ROOT / "splits"
 SUBSET_DIR = DATA_ROOT / "subsets"
@@ -55,6 +56,11 @@ def setup_directories():
         folder.mkdir(parents=True, exist_ok=True)
 
 
+# 7. Model CLIP
+CLIP_MODEL_NAME = ("openai/clip-vit-base-patch32")
+CLIP_BATCH_SIZE = 32
+
 # GPT-2
 GPT2_MODEL_NAME = "openai-community/gpt2"
 GPT2_MAX_LENGTH = 48
+
