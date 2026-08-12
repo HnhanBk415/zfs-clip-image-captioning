@@ -3,3 +3,7 @@ matplotlib
 Pillow
 tqdm
 pyprojroot
+# Thư viện hỗ trợ model
+torch 
+transformers
+kagglehub
