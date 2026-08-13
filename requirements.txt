@@ -2,6 +2,8 @@ pandas
 matplotlib
 Pillow
 tqdm
+string
+re
 pyprojroot
 # Thư viện hỗ trợ model
 torch 

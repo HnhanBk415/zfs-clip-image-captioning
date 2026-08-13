@@ -17,6 +17,8 @@ import torch
 import transformers
 from transformers import AutoTokenizer
 import numpy as np
+import string
+import re
 
 # 1. Thiết lập Root Directory và thêm vào sys.path
 PROJECT_ROOT = here()
