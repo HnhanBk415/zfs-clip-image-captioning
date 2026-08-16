@@ -54,7 +54,7 @@ TEST_RATIO = 0.10
 
 # 6. Hàm khởi tạo thư mục
 def setup_directories():
-    for folder in [DATA_ROOT, RAW_DIR, SPLIT_DIR, SUBSET_DIR, FEATURE_DIR, METADATA_DIR]:
+    for folder in [DATA_ROOT, RAW_DIR, SPLIT_DIR, SUBSET_DIR, FEATURE_DIR, METADATA_DIR, TOKENIZED_DIR]:
         folder.mkdir(parents=True, exist_ok=True)
 
 
