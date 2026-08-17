@@ -5,6 +5,8 @@
     "val": 0.1,
     "test": 0.1
   },
+  "strict_captions_per_image": 5,
+  "min_word_count": 2,
   "num_images": {
     "train": 6462,
     "val": 807,

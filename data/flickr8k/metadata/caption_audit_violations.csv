@@ -1,0 +1,4 @@
+﻿index,image,raw_caption,clean_caption,flags,flags_vi,word_count
+9305,2428275562_4bde2bc5ea.jpg,A,A,"['ARTICLE_ONLY', 'TOO_SHORT']","Chỉ chứa mạo từ/từ đơn lẻ, Caption quá ngắn",1
+14298,2755314937_1e974bf2b5.jpg,broken image,broken image,['META_TEXT_JUNK'],Văn bản rác / Lỗi nhãn ảnh,2
+33360,3640443200_b8066f37f6.jpg,a,a,"['ARTICLE_ONLY', 'TOO_SHORT']","Chỉ chứa mạo từ/từ đơn lẻ, Caption quá ngắn",1

@@ -1,0 +1,8 @@
+{
+  "raw_unique_images": 8091,
+  "valid_images": 8078,
+  "missing_image_files": 0,
+  "invalid_image_files": 0,
+  "invalid_caption_count_images": 13,
+  "final_valid_caption_pairs": 40390
+}
