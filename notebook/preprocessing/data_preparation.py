@@ -20,31 +20,7 @@ EDA/visualization intentionally remains in the notebook:
     notebook/flickr8k_exploration.ipynb
 """
 
-import json
-import random
-import re
-import string
-import unicodedata
-from pathlib import Path
-
-import kagglehub
-import pandas as pd
-from PIL import Image
-from tqdm import tqdm
-
-from config import (
-    KAGGLE_DATASET_HANDLE,
-    SPLIT_DIR,
-    SUBSET_DIR,
-    METADATA_DIR,
-    TRAIN_SUBSET_RATIOS,
-    SUBSET_NAMES,
-    SEED,
-    TRAIN_RATIO,
-    VAL_RATIO,
-    TEST_RATIO,
-    setup_directories,
-)
+from config import *
 
 # Data-policy parameters belong here rather than being hidden in runtime logic.
 STRICT_CAPTIONS_PER_IMAGE = 5
