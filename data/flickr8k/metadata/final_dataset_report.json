@@ -1,0 +1,12 @@
+{
+  "valid_images": 8078,
+  "train_images": 6462,
+  "val_images": 807,
+  "test_images": 809,
+  "train_captions": 32310,
+  "val_captions": 4035,
+  "test_captions": 4045,
+  "strict_captions_per_image": 5,
+  "min_word_count": 2,
+  "seed": 42
+}

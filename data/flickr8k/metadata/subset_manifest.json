@@ -1,0 +1,22 @@
+{
+  "train_1pct": {
+    "images": 64,
+    "captions": 320
+  },
+  "train_5pct": {
+    "images": 323,
+    "captions": 1615
+  },
+  "train_10pct": {
+    "images": 646,
+    "captions": 3230
+  },
+  "train_25pct": {
+    "images": 1615,
+    "captions": 8075
+  },
+  "train_100pct": {
+    "images": 6462,
+    "captions": 32310
+  }
+}
