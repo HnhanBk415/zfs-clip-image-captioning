@@ -34,7 +34,7 @@ class ClipCapDataset(Dataset):
 
         print(
             f"Alignment PASS: "
-            f"{len(token_image_ids)} images ↔ {len(self.image_ids)} caption samples"
+            f"{len(token_image_ids)} images <-> {len(self.image_ids)} caption samples"
         )
 
     def __len__(self):

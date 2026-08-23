@@ -3,19 +3,21 @@ from torch import Tensor, nn
 from .clip_projection import ClipProjection
 from .prefix_encoder import PrefixTransformerEncoder
 
+
 class TransformerMapper(nn.Module):
     """
     Gộp toàn bộ pipeline:
       CLIP Features [B, clip_dim]
         -> ClipProjection -> Image Tokens [B, clip_length, embedding_dim]
-        -> Transformer Encoder -> Encoded Sequence [B, clip_length + prefix_length, embedding_dim]
+        -> Transformer Encoder
+        -> Encoded Sequence [B, clip_length + prefix_length, embedding_dim]
         -> Slicing K token cuối -> Soft Prefix [B, prefix_length, embedding_dim]
     """
 
     def __init__(
         self,
-        clip_dim: int = 512,
-        embedding_dim: int = 768,
+        clip_dim: int,
+        embedding_dim: int,
         clip_length: int = 10,
         prefix_length: int = 10,
         num_layers: int = 4,
@@ -27,36 +29,41 @@ class TransformerMapper(nn.Module):
 
         # --- 1. Validation ---
         self._validate_configuration(
-            clip_dim=clip_dim,
-            embedding_dim=embedding_dim,
-            clip_length=clip_length,
-            prefix_length=prefix_length,
-            num_layers=num_layers,
-            num_heads=num_heads,
-            dropout=dropout,
+            clip_dim = clip_dim,
+            embedding_dim = embedding_dim,
+            clip_length = clip_length,
+            prefix_length = prefix_length,
+            num_layers = num_layers,
+            num_heads = num_heads,
+            feedforward_dim = feedforward_dim,
+            dropout = dropout,
         )
 
         self.clip_dim = clip_dim
         self.embedding_dim = embedding_dim
         self.clip_length = clip_length
         self.prefix_length = prefix_length
-        self.feedforward_dim = feedforward_dim or (4 * embedding_dim)
+        self.feedforward_dim = (
+            4 * embedding_dim
+            if feedforward_dim is None
+            else feedforward_dim
+        )
         self.dropout = dropout
 
         # --- 2. Khởi tạo submodule ---
         self.clip_projection = ClipProjection(
-            clip_dim=self.clip_dim,
-            embedding_dim=self.embedding_dim,
-            clip_length=self.clip_length,
+            clip_dim = self.clip_dim,
+            embedding_dim = self.embedding_dim,
+            clip_length = self.clip_length,
         )
 
         self.transformer = PrefixTransformerEncoder(
-            prefix_length=self.prefix_length,
-            d_model=self.embedding_dim,
-            nhead=num_heads,
-            num_layers=num_layers,
-            feedforward_dim=self.feedforward_dim,
-            dropout=self.dropout,
+            prefix_length = self.prefix_length,
+            d_model = self.embedding_dim,
+            nhead = num_heads,
+            num_layers = num_layers,
+            feedforward_dim = self.feedforward_dim,
+            dropout = self.dropout,
         )
 
     @staticmethod
@@ -67,6 +74,7 @@ class TransformerMapper(nn.Module):
         prefix_length: int,
         num_layers: int,
         num_heads: int,
+        feedforward_dim: int | None,
         dropout: float,
     ) -> None:
         positive_int_params = {
@@ -79,14 +87,32 @@ class TransformerMapper(nn.Module):
         }
         for name, val in positive_int_params.items():
             if isinstance(val, bool) or not isinstance(val, int) or val <= 0:
-                raise ValueError(f"Tham số '{name}' phải là số nguyên > 0, nhận được: {val}")
+                raise ValueError(
+                    f"Tham số '{name}' phải là số nguyên > 0, "
+                    f"nhận được: {val}"
+                )
 
         if embedding_dim % num_heads != 0:
             raise ValueError(
-                f"embedding_dim ({embedding_dim}) phải chia hết cho num_heads ({num_heads})"
+                f"embedding_dim ({embedding_dim}) phải chia hết cho "
+                f"num_heads ({num_heads})"
             )
 
-        if not (0.0 <= dropout < 1.0):
+        if feedforward_dim is not None and (
+            isinstance(feedforward_dim, bool)
+            or not isinstance(feedforward_dim, int)
+            or feedforward_dim <= 0
+        ):
+            raise ValueError(
+                "feedforward_dim phải là số nguyên > 0 hoặc None, "
+                f"nhận được: {feedforward_dim}"
+            )
+
+        if (
+            isinstance(dropout, bool)
+            or not isinstance(dropout, (int, float))
+            or not 0.0 <= dropout < 1.0
+        ):
             raise ValueError(
                 f"dropout phải nằm trong khoảng [0.0, 1.0), nhận được: {dropout}"
             )
@@ -104,8 +130,16 @@ class TransformerMapper(nn.Module):
 
     def count_parameters(self) -> dict[str, int]:
         """Thống kê chi tiết số lượng trainable parameters trong Mapper."""
-        proj_params = sum(p.numel() for p in self.clip_projection.parameters() if p.requires_grad)
-        transformer_params = sum(p.numel() for p in self.transformer.parameters() if p.requires_grad)
+        proj_params = sum(
+            parameter.numel()
+            for parameter in self.clip_projection.parameters()
+            if parameter.requires_grad
+        )
+        transformer_params = sum(
+            parameter.numel()
+            for parameter in self.transformer.parameters()
+            if parameter.requires_grad
+        )
         total = proj_params + transformer_params
         return {
             "projection_parameters": proj_params,

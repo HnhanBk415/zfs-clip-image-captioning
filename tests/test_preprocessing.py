@@ -1,7 +1,13 @@
 import torch
+from transformers import AutoConfig
 
+import config as project_config
 from src.preprocessing.clipcap_dataset import create_dataloaders
 from src.mapping_network.transformer_mapper import TransformerMapper
+
+
+CLIP_LENGTH = 10
+PREFIX_LENGTH = 10
 
 
 def test_preprocessing_output_shapes():
@@ -12,7 +18,8 @@ def test_preprocessing_output_shapes():
 
     batch = next(iter(loaders["train"]))
 
-    assert batch["image_embed"].shape == (4, 512)
+    assert batch["image_embed"].ndim == 2
+    assert batch["image_embed"].shape[0] == 4
 
     assert (
         batch["input_ids"].shape
@@ -37,11 +44,17 @@ def test_preprocessing_to_mapper():
 
     batch = next(iter(loaders["train"]))
 
+    clip_dim = int(batch["image_embed"].shape[1])
+    language_model_config = AutoConfig.from_pretrained(
+        project_config.GPT2_MODEL_NAME
+    )
+    embedding_dim = int(language_model_config.hidden_size)
+
     mapper = TransformerMapper(
-        clip_dim=512,
-        embedding_dim=768,
-        clip_length=10,
-        prefix_length=10,
+        clip_dim=clip_dim,
+        embedding_dim=embedding_dim,
+        clip_length=CLIP_LENGTH,
+        prefix_length=PREFIX_LENGTH,
         num_layers=4,
         num_heads=8,
     )
@@ -52,6 +65,6 @@ def test_preprocessing_to_mapper():
 
     assert prefix.shape == (
         4,
-        10,
-        768
+        PREFIX_LENGTH,
+        embedding_dim,
     )
