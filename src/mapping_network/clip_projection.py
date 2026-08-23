@@ -1,29 +1,7 @@
-# CLIP Linear Projection to Image Tokens
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
-import torch
 from torch import Tensor, nn
-from transformers import AutoConfig
 
-import config as project_config
-
-def find_project_root(start: Path) -> Path:
-    for candidate in (start, *start.parents):
-        if (candidate / "config.py").is_file():
-            return candidate
-    raise FileNotFoundError("Could not locate project config.py")
-
-
-PROJECT_ROOT = find_project_root(Path.cwd())
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
-
-print("PyTorch version:", torch.__version__)
-print("CUDA available:", torch.cuda.is_available())
 
 class ClipProjection(nn.Module):
     """Project one global CLIP feature into a sequence of image tokens."""
