@@ -18,17 +18,18 @@ def test_preprocessing_output_shapes():
 
     batch = next(iter(loaders["train"]))
 
+    assert set(batch) == {
+        "image_embed",
+        "input_ids",
+        "attention_mask",
+    }
+
     assert batch["image_embed"].ndim == 2
     assert batch["image_embed"].shape[0] == 4
 
     assert (
         batch["input_ids"].shape
         == batch["attention_mask"].shape
-    )
-
-    assert (
-        batch["input_ids"].shape
-        == batch["labels"].shape
     )
 
     assert torch.isfinite(

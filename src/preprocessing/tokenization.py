@@ -1,23 +1,3 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-
-"""
-Flickr8k GPT-2 Tokenization Pipeline
-
-Responsibilities
-----------------
-1. Load frozen split manifests (train, val, test) and nested subsets.
-2. Validate integrity of loaded splits.
-3. Initialize GPT-2 tokenizer with EOS as PAD token.
-4. Tokenize captions with deterministic EOS appending and fixed-length padding.
-5. Verify tokenized output invariants (shapes, token bounds, EOS presence).
-6. Export tokenized tensors (.pt) for PyTorch training and evaluation.
-
-EDA/Exploration intentionally remains in the notebook:
-    notebook/gpt2_tokenization.ipynb
-"""
-
-
 from config import *
 
 
@@ -74,7 +54,7 @@ def tokenize_samples_batch(
 ) -> Dict[str, torch.Tensor]:
     """
     Batch tokenization appending EOS and padding to max_length.
-    Generates input_ids, attention_mask, and training labels (-100 for PAD).
+    Generates input_ids and attention_mask.
     """
     # Gắn sẵn EOS vào chuỗi để tận dụng C-Rust tokenizer tốc độ cao
     raw_texts = [s["caption"] + tokenizer.eos_token for s in samples]
@@ -97,14 +77,9 @@ def tokenize_samples_batch(
     row_idx = torch.arange(input_ids.shape[0])
     input_ids[row_idx, last_real_idx] = tokenizer.eos_token_id
 
-    # Labels cho Cross-Entropy (bỏ qua PAD với -100)
-    labels = input_ids.clone()
-    labels[attention_mask == 0] = -100
-
     return {
         "input_ids": input_ids,
         "attention_mask": attention_mask,
-        "labels": labels,
     }
 
 
@@ -121,7 +96,6 @@ def build_tokenized_data(
         "captions": [sample["caption"] for sample in samples],
         "input_ids": encoded["input_ids"],
         "attention_mask": encoded["attention_mask"],
-        "labels": encoded["labels"],
         "tokenizer_name": GPT2_MODEL_NAME,
         "max_length": max_length,
         "eos_token_id": tokenizer.eos_token_id,

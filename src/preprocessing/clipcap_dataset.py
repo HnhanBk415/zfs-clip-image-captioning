@@ -46,15 +46,11 @@ class ClipCapDataset(Dataset):
         image_embed = self.clip_features[feature_idx]
         input_ids = self.input_ids[idx]
         attention_mask = self.attention_mask[idx]
-
-        labels = input_ids.clone()
-        labels[attention_mask == 0] = -100 # gán -100 cho các vị trí đệm để hàm CrossEntropyLoss skip
         
         return {
             "image_embed": image_embed,
             "input_ids": input_ids,
-            "attention_mask": attention_mask,
-            "labels": labels
+            "attention_mask": attention_mask
         }
 
 def create_dataloaders(batch_size=32, train_filename="train.pt"):
