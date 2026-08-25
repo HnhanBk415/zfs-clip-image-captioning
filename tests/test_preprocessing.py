@@ -1,9 +1,11 @@
 import torch
 from transformers import AutoConfig
 
-import config as project_config
-from src.preprocessing.clipcap_dataset import create_dataloaders
-from src.mapping_network.transformer_mapper import TransformerMapper
+from src.config.clipcap_config import GPT2_MODEL_NAME
+from src.clipcap.preprocessing.clipcap_dataset import create_dataloaders
+from src.clipcap.models.mapping_network.transformer_mapper import (
+    TransformerMapper,
+)
 
 
 CLIP_LENGTH = 10
@@ -47,7 +49,7 @@ def test_preprocessing_to_mapper():
 
     clip_dim = int(batch["image_embed"].shape[1])
     language_model_config = AutoConfig.from_pretrained(
-        project_config.GPT2_MODEL_NAME
+        GPT2_MODEL_NAME
     )
     embedding_dim = int(language_model_config.hidden_size)
 
