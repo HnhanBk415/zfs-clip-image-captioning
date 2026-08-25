@@ -54,12 +54,12 @@ def test_preprocessing_to_mapper():
     embedding_dim = int(language_model_config.hidden_size)
 
     mapper = TransformerMapper(
-        clip_dim=clip_dim,
-        embedding_dim=embedding_dim,
-        clip_length=CLIP_LENGTH,
-        prefix_length=PREFIX_LENGTH,
-        num_layers=4,
-        num_heads=8,
+        clip_dim = clip_dim,
+        embedding_dim = embedding_dim,
+        clip_length = CLIP_LENGTH,
+        prefix_length = PREFIX_LENGTH,
+        num_layers = 4,
+        num_heads = 8,
     )
 
     prefix = mapper(

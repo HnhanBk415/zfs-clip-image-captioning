@@ -88,7 +88,10 @@ def tokenize_samples_batch(
 ) -> Dict[str, torch.Tensor]:
     """
     Batch tokenization appending EOS and padding to max_length.
-    Generates input_ids, attention_mask, and training labels (-100 for PAD).
+    Generates input_ids and attention_mask.
+
+    Training labels are intentionally created by the ClipCap model only when
+    loss computation is requested.
     """
     # Gắn sẵn EOS vào chuỗi để tận dụng C-Rust tokenizer tốc độ cao
     raw_texts = [s["caption"] + tokenizer.eos_token for s in samples]
@@ -111,14 +114,9 @@ def tokenize_samples_batch(
     row_idx = torch.arange(input_ids.shape[0])
     input_ids[row_idx, last_real_idx] = tokenizer.eos_token_id
 
-    # Labels cho Cross-Entropy (bỏ qua PAD với -100)
-    labels = input_ids.clone()
-    labels[attention_mask == 0] = -100
-
     return {
         "input_ids": input_ids,
         "attention_mask": attention_mask,
-        "labels": labels,
     }
 
 
@@ -135,7 +133,6 @@ def build_tokenized_data(
         "captions": [sample["caption"] for sample in samples],
         "input_ids": encoded["input_ids"],
         "attention_mask": encoded["attention_mask"],
-        "labels": encoded["labels"],
         "tokenizer_name": GPT2_MODEL_NAME,
         "max_length": max_length,
         "eos_token_id": tokenizer.eos_token_id,
@@ -154,6 +151,9 @@ def verify_tokenized_invariants(
     input_ids = data["input_ids"]
     attention_mask = data["attention_mask"]
 
+    assert "labels" not in data, (
+        f"{split_name}: labels must be created by the model when computing loss"
+    )
     assert len(data["caption_indices"]) == num_samples, f"{split_name}: caption_indices mismatch"
     assert len(data["captions"]) == num_samples, f"{split_name}: captions mismatch"
     assert input_ids.shape == (num_samples, max_length), f"{split_name}: input_ids shape mismatch"
@@ -195,7 +195,7 @@ def main():
 
     for name, data in splits.items():
         validate_split(name, data)
-        print(f"✓ {name.capitalize():5}: {len(data):,} images | {sum(len(v) for v in data.values()):,} captions")
+        print(f"{name.capitalize():5}: {len(data):,} images | {sum(len(v) for v in data.values()):,} captions")
 
     print("\n[2/4] Initializing Tokenizer...")
     tokenizer = setup_tokenizer(GPT2_MODEL_NAME)
@@ -212,7 +212,7 @@ def main():
         save_path = TOKENIZED_DIR / f"{name}.pt"
         torch.save(packed, save_path)
         tokenized_splits[name] = packed
-        print(f"✓ Saved {name}.pt | Tensor shape: {packed['input_ids'].shape}")
+        print(f"Saved {name}.pt | Tensor shape: {packed['input_ids'].shape}")
 
     print("\n[4/4] Tokenizing nested subsets...")
     subset_tokenized = {}
@@ -227,7 +227,7 @@ def main():
         save_path = TOKENIZED_DIR / f"{subset_name}.pt"
         torch.save(packed_subset, save_path)
         subset_tokenized[subset_name] = packed_subset
-        print(f"✓ Saved {subset_name}.pt | Samples: {len(subset_samples):,}")
+        print(f"Saved {subset_name}.pt | Samples: {len(subset_samples):,}")
 
     verify_nested_subsets(subset_tokenized)
 
