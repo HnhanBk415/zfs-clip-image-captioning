@@ -11,7 +11,6 @@ from PIL import Image
 
 
 fake_import_modules = {
-    "config": ModuleType("config"),
     "kagglehub": ModuleType("kagglehub"),
     "torch": ModuleType("torch"),
     "transformers": ModuleType("transformers"),
@@ -21,7 +20,7 @@ fake_import_modules["transformers"].CLIPProcessor = object
 
 with patch.dict(sys.modules, fake_import_modules):
     clip_features_module = importlib.import_module(
-        "src.preprocessing.clip_features"
+        "src.clipcap.preprocessing.clip_features"
     )
 
 _get_feature_tensor = clip_features_module._get_feature_tensor

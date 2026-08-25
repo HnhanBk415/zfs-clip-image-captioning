@@ -16,9 +16,23 @@ Responsibilities
 EDA/Exploration intentionally remains in the notebook:
     notebook/gpt2_tokenization.ipynb
 """
+import json
+from pathlib import Path
+from typing import Any, Dict, List
 
-
-from config import *
+import torch
+from transformers import AutoTokenizer
+from src.config.common_config import (
+    SPLIT_DIR,
+    SUBSET_DIR,
+    SUBSET_NAMES,
+)
+from src.config.clipcap_config import (
+    GPT2_MAX_LENGTH,
+    GPT2_MODEL_NAME,
+    TOKENIZED_DIR,
+    setup_clipcap_directories,
+)
 
 
 def load_json(path: Path) -> Dict[str, List[str]]:
@@ -165,7 +179,7 @@ def verify_nested_subsets(subset_tokenized: Dict[str, Dict[str, Any]]) -> None:
 
 
 def main():
-    setup_directories()
+    setup_clipcap_directories()
     TOKENIZED_DIR.mkdir(parents=True, exist_ok=True)
 
     print("=" * 60)
