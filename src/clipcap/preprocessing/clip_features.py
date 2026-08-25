@@ -178,7 +178,7 @@ def run_clip_feature_extraction(
     show_progress: bool = True,
 ) -> dict[str, Any]:
     """Run feature extraction with paths and settings from project config."""
-    setup_clipcap_directories
+    setup_clipcap_directories()
 
     if dataset_path is None:
         resolved_dataset_path = Path(

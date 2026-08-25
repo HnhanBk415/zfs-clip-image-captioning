@@ -3,6 +3,14 @@ from __future__ import annotations
 import torch
 from torch import Tensor, nn
 
+from src.config.clipcap_config import (
+    CLIPCAP_MAPPER_DROPOUT,
+    CLIPCAP_MAPPER_FEEDFORWARD_DIM,
+    CLIPCAP_MAPPER_FEEDFORWARD_MULTIPLIER,
+    CLIPCAP_PREFIX_INIT_MEAN,
+    CLIPCAP_PREFIX_INIT_STD,
+)
+
 
 class PrefixTransformerEncoder(nn.Module):
     def __init__(
@@ -11,8 +19,8 @@ class PrefixTransformerEncoder(nn.Module):
         d_model: int,
         nhead: int,
         num_layers: int,
-        feedforward_dim: int | None = None,
-        dropout: float = 0.1,
+        feedforward_dim: int | None = CLIPCAP_MAPPER_FEEDFORWARD_DIM,
+        dropout: float = CLIPCAP_MAPPER_DROPOUT,
     ) -> None:
         super().__init__()
 
@@ -29,7 +37,7 @@ class PrefixTransformerEncoder(nn.Module):
         if d_model % nhead != 0:
             raise ValueError("d_model must be divisible by nhead")
         if feedforward_dim is None:
-            feedforward_dim = 4 * d_model
+            feedforward_dim = CLIPCAP_MAPPER_FEEDFORWARD_MULTIPLIER * d_model
         elif (
             isinstance(feedforward_dim, bool)
             or not isinstance(feedforward_dim, int)
@@ -51,7 +59,11 @@ class PrefixTransformerEncoder(nn.Module):
         self.prefix_const = nn.Parameter(
             torch.empty(prefix_length, d_model)
         )
-        nn.init.normal_(self.prefix_const, mean=0.0, std=0.02)
+        nn.init.normal_(
+            self.prefix_const,
+            mean=CLIPCAP_PREFIX_INIT_MEAN,
+            std=CLIPCAP_PREFIX_INIT_STD,
+        )
 
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=d_model,

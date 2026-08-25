@@ -2,7 +2,6 @@ pandas
 matplotlib
 Pillow
 tqdm
-pyprojroot
 numpy
 
 # Thư viện hỗ trợ model

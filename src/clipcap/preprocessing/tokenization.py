@@ -45,7 +45,8 @@ def load_json(path: Path) -> Dict[str, List[str]]:
 
 def validate_split(split_name: str, data: Dict[str, Any]) -> None:
     """Validate structure and caption content in a single pass."""
-    assert isinstance(data, dict), f"{split_name} must be a dictionary."
+    if not isinstance(data, dict):
+        raise TypeError(f"{split_name} must be a dictionary")
 
     invalid_lists, invalid_types, empty_caps = [], [], []
 
@@ -59,9 +60,18 @@ def validate_split(split_name: str, data: Dict[str, Any]) -> None:
             elif not cap.strip():
                 empty_caps.append((img_id, cap))
 
-    assert not invalid_lists, f"{split_name} contains non-list captions: {len(invalid_lists)}"
-    assert not invalid_types, f"{split_name} contains non-string captions: {len(invalid_types)}"
-    assert not empty_caps, f"{split_name} contains empty captions: {len(empty_caps)}"
+    if invalid_lists:
+        raise TypeError(
+            f"{split_name} contains non-list captions: {len(invalid_lists)}"
+        )
+    if invalid_types:
+        raise TypeError(
+            f"{split_name} contains non-string captions: {len(invalid_types)}"
+        )
+    if empty_caps:
+        raise ValueError(
+            f"{split_name} contains empty captions: {len(empty_caps)}"
+        )
 
 
 def flatten_split(data: Dict[str, List[str]]) -> List[Dict[str, Any]]:
@@ -151,22 +161,28 @@ def verify_tokenized_invariants(
     input_ids = data["input_ids"]
     attention_mask = data["attention_mask"]
 
-    assert "labels" not in data, (
-        f"{split_name}: labels must be created by the model when computing loss"
-    )
-    assert len(data["caption_indices"]) == num_samples, f"{split_name}: caption_indices mismatch"
-    assert len(data["captions"]) == num_samples, f"{split_name}: captions mismatch"
-    assert input_ids.shape == (num_samples, max_length), f"{split_name}: input_ids shape mismatch"
-    assert attention_mask.shape == (num_samples, max_length), f"{split_name}: attention_mask shape mismatch"
+    if "labels" in data:
+        raise ValueError(
+            f"{split_name}: labels must be created by the model when computing loss"
+        )
+    if len(data["caption_indices"]) != num_samples:
+        raise ValueError(f"{split_name}: caption_indices mismatch")
+    if len(data["captions"]) != num_samples:
+        raise ValueError(f"{split_name}: captions mismatch")
+    if input_ids.shape != (num_samples, max_length):
+        raise ValueError(f"{split_name}: input_ids shape mismatch")
+    if attention_mask.shape != (num_samples, max_length):
+        raise ValueError(f"{split_name}: attention_mask shape mismatch")
 
     real_lengths = attention_mask.sum(dim=1)
     last_real_indices = real_lengths - 1
     row_indices = torch.arange(input_ids.shape[0])
     last_real_tokens = input_ids[row_indices, last_real_indices]
 
-    assert torch.all(
-        last_real_tokens == tokenizer.eos_token_id
-    ), f"{split_name}: Real sequence must terminate with EOS token."
+    if not torch.all(last_real_tokens == tokenizer.eos_token_id):
+        raise ValueError(
+            f"{split_name}: real sequence must terminate with EOS token"
+        )
 
 
 def verify_nested_subsets(subset_tokenized: Dict[str, Dict[str, Any]]) -> None:
@@ -174,7 +190,8 @@ def verify_nested_subsets(subset_tokenized: Dict[str, Dict[str, Any]]) -> None:
     previous_ids = set()
     for subset_name in SUBSET_NAMES:
         current_ids = set(subset_tokenized[subset_name]["image_ids"])
-        assert previous_ids.issubset(current_ids), f"Nested subset violation at {subset_name}"
+        if not previous_ids.issubset(current_ids):
+            raise ValueError(f"Nested subset violation at {subset_name}")
         previous_ids = current_ids
 
 
