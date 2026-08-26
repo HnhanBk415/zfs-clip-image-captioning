@@ -9,8 +9,18 @@ from transformers import GPT2Config, GPT2LMHeadModel
 import src.clipcap.training.trainer as training_module
 from src.clipcap.models.clipcap_model import ClipCaptionModel
 from src.clipcap.models.mapping_network import TransformerMapper
-from src.clipcap.training.trainer import evaluate, fit, train_one_epoch
-from src.config.clipcap_config import ClipCapTrainingConfig
+from src.clipcap.training.trainer import (
+    _normalize_saved_config,
+    evaluate,
+    fit,
+    train_one_epoch,
+)
+from src.config.clipcap_config import (
+    CLIPCAP_FIXED_EPOCH_POLICY,
+    CLIPCAP_FIXED_EPOCHS,
+    ClipCapTrainingConfig,
+    create_clipcap_fixed_epoch_config,
+)
 
 
 class TinyCaptionDataset(Dataset):
@@ -202,3 +212,83 @@ def test_fit_stops_after_validation_patience(tmp_path: Path, monkeypatch):
     assert result["stopped_early"] is True
     assert result["last_epoch"] == 3
     assert result["best_epoch"] == 1
+
+
+def test_fixed_epoch_config_uses_central_policy_and_epoch_count(tmp_path: Path):
+    config = create_clipcap_fixed_epoch_config(output_root=tmp_path)
+
+    assert config.training_policy == CLIPCAP_FIXED_EPOCH_POLICY
+    assert config.max_epochs == CLIPCAP_FIXED_EPOCHS == 7
+    assert config.output_root == tmp_path
+
+
+def test_legacy_config_defaults_to_early_stopping_policy(tmp_path: Path):
+    config = ClipCapTrainingConfig(output_root=tmp_path)
+    legacy_config = config.to_dict()
+    legacy_config.pop("training_policy")
+
+    assert _normalize_saved_config(legacy_config) == config.to_dict()
+
+
+def test_fit_fixed_epoch_ignores_patience_and_saves_final_checkpoint(
+    tmp_path: Path,
+    monkeypatch,
+):
+    config = ClipCapTrainingConfig(
+        subset_name="train_1pct",
+        batch_size=2,
+        num_workers=0,
+        learning_rate=1e-3,
+        max_epochs=3,
+        early_stopping_patience=1,
+        training_policy=CLIPCAP_FIXED_EPOCH_POLICY,
+        clip_length=2,
+        prefix_length=2,
+        num_layers=1,
+        num_heads=4,
+        feedforward_dim=48,
+        dropout=0.0,
+        output_root=tmp_path,
+    )
+    validation_losses = iter((1.0, 1.1, 1.2))
+    monkeypatch.setattr(
+        training_module,
+        "train_one_epoch",
+        lambda *args, **kwargs: 1.0,
+    )
+    monkeypatch.setattr(
+        training_module,
+        "evaluate",
+        lambda *args, **kwargs: next(validation_losses),
+    )
+
+    result = fit(
+        create_tiny_model(),
+        create_loaders(),
+        config,
+        torch.device("cpu"),
+        resume=False,
+        show_progress=False,
+    )
+
+    final_path = config.experiment_dir / "final.pt"
+    checkpoint = torch.load(final_path, map_location="cpu", weights_only=False)
+    assert result["training_policy"] == CLIPCAP_FIXED_EPOCH_POLICY
+    assert result["last_epoch"] == 3
+    assert result["final_epoch"] == 3
+    assert result["stopped_early"] is False
+    assert result["official_checkpoint"] == str(final_path)
+    assert len(result["history"]) == 3
+    assert checkpoint["checkpoint_type"] == "final"
+    assert checkpoint["state"]["last_epoch"] == 3
+
+    resumed_result = fit(
+        create_tiny_model(),
+        create_loaders(),
+        config,
+        torch.device("cpu"),
+        resume=True,
+        show_progress=False,
+    )
+    assert resumed_result["history"] == result["history"]
+    assert resumed_result["optimizer_steps"] == result["optimizer_steps"]

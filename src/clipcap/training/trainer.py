@@ -23,6 +23,8 @@ from src.clipcap.models.clipcap_model import ClipCaptionModel
 from src.clipcap.models.mapping_network import TransformerMapper
 from src.clipcap.preprocessing.clipcap_dataset import create_dataloaders
 from src.config.clipcap_config import (
+    CLIPCAP_EARLY_STOPPING_POLICY,
+    CLIPCAP_FIXED_EPOCH_POLICY,
     CLIPCAP_TRAIN_SUBSETS,
     GPT2_MODEL_NAME,
     ClipCapTrainingConfig,
@@ -33,6 +35,7 @@ CHECKPOINT_VERSION = 1
 SUMMARY_FIELDS = (
     "subset_name",
     "seed",
+    "training_policy",
     "train_images",
     "train_samples",
     "val_images",
@@ -44,6 +47,9 @@ SUMMARY_FIELDS = (
     "elapsed_seconds",
     "stopped_early",
     "best_checkpoint",
+    "final_epoch",
+    "final_checkpoint",
+    "official_checkpoint",
 )
 
 
@@ -239,6 +245,28 @@ def _best_checkpoint_payload(
     }
 
 
+def _final_checkpoint_payload(
+    model: ClipCaptionModel,
+    config: ClipCapTrainingConfig,
+    state: Mapping[str, Any],
+) -> dict[str, Any]:
+    return {
+        "checkpoint_version": CHECKPOINT_VERSION,
+        "checkpoint_type": "final",
+        "mapper_state_dict": model.mapper.state_dict(),
+        "gpt2_model_name": GPT2_MODEL_NAME,
+        "config": config.to_dict(),
+        "state": dict(state),
+    }
+
+
+def _normalize_saved_config(config: Mapping[str, Any]) -> dict[str, Any]:
+    """Treat checkpoints created before training policies as early-stopping."""
+    normalized = dict(config)
+    normalized.setdefault("training_policy", CLIPCAP_EARLY_STOPPING_POLICY)
+    return normalized
+
+
 def _load_checkpoint(path: Path, device: torch.device) -> dict[str, Any]:
     checkpoint = torch.load(path, map_location=device, weights_only=False)
     if checkpoint.get("checkpoint_version") != CHECKPOINT_VERSION:
@@ -251,7 +279,7 @@ def load_mapper_checkpoint(
     checkpoint_path: str | Path,
     device: str | torch.device = "cpu",
 ) -> dict[str, Any]:
-    """Restore mapper weights from either a best or latest checkpoint."""
+    """Restore mapper weights from a best, latest, or final checkpoint."""
     selected_device = torch.device(device)
     checkpoint = _load_checkpoint(Path(checkpoint_path), selected_device)
     model.mapper.load_state_dict(checkpoint["mapper_state_dict"])
@@ -268,7 +296,8 @@ def _restore_latest_checkpoint(
     checkpoint = _load_checkpoint(path, device)
     if checkpoint.get("checkpoint_type") != "latest":
         raise ValueError(f"Expected a latest checkpoint: {path}")
-    if checkpoint.get("config") != config.to_dict():
+    saved_config = _normalize_saved_config(checkpoint.get("config", {}))
+    if saved_config != config.to_dict():
         raise ValueError(
             "Checkpoint configuration differs from the current experiment. "
             "Use a different output_root or restore the original configuration."
@@ -294,13 +323,14 @@ def fit(
     resume: bool = True,
     show_progress: bool = True,
 ) -> dict[str, Any]:
-    """Train one subset, save resumable checkpoints, and apply early stopping."""
+    """Train one subset under its configured stopping policy."""
     if "train" not in dataloaders or "val" not in dataloaders:
         raise KeyError("dataloaders must contain train and val loaders")
 
     experiment_dir = config.experiment_dir
     latest_path = experiment_dir / "latest.pt"
     best_path = experiment_dir / "best.pt"
+    final_path = experiment_dir / "final.pt"
     history_path = experiment_dir / "history.json"
     config_path = experiment_dir / "config.json"
     experiment_dir.mkdir(parents=True, exist_ok=True)
@@ -340,7 +370,10 @@ def fit(
 
     _atomic_json_save(config.to_dict(), config_path)
     start_epoch = int(state["last_epoch"]) + 1
-    stopped_early = bool(state.get("stopped_early", False))
+    stopped_early = (
+        config.training_policy == CLIPCAP_EARLY_STOPPING_POLICY
+        and bool(state.get("stopped_early", False))
+    )
     previous_elapsed_seconds = float(state.get("elapsed_seconds", 0.0))
     started_at = time.perf_counter()
     epoch_numbers: Iterable[int]
@@ -398,7 +431,8 @@ def fit(
             state["epochs_without_improvement"] += 1
 
         stopped_early = (
-            state["epochs_without_improvement"]
+            config.training_policy == CLIPCAP_EARLY_STOPPING_POLICY
+            and state["epochs_without_improvement"]
             >= config.early_stopping_patience
         )
         state["stopped_early"] = stopped_early
@@ -423,11 +457,31 @@ def fit(
 
     elapsed_seconds = previous_elapsed_seconds + time.perf_counter() - started_at
     state["elapsed_seconds"] = elapsed_seconds
+    final_checkpoint: str | None = None
+    final_epoch: int | None = None
+    if config.training_policy == CLIPCAP_FIXED_EPOCH_POLICY:
+        if int(state["last_epoch"]) != config.max_epochs:
+            raise RuntimeError(
+                "Fixed-epoch training did not reach the configured final epoch"
+            )
+        _atomic_torch_save(
+            _final_checkpoint_payload(model, config, state),
+            final_path,
+        )
+        final_checkpoint = str(final_path)
+        final_epoch = int(state["last_epoch"])
+
     train_dataset = dataloaders["train"].dataset
     val_dataset = dataloaders["val"].dataset
+    official_checkpoint = (
+        final_checkpoint
+        if config.training_policy == CLIPCAP_FIXED_EPOCH_POLICY
+        else str(best_path)
+    )
     result = {
         "subset_name": config.subset_name,
         "seed": config.seed,
+        "training_policy": config.training_policy,
         "train_images": len(set(train_dataset.image_ids)),
         "train_samples": len(train_dataset),
         "val_images": len(set(val_dataset.image_ids)),
@@ -439,6 +493,9 @@ def fit(
         "elapsed_seconds": elapsed_seconds,
         "stopped_early": stopped_early,
         "best_checkpoint": str(best_path),
+        "final_epoch": final_epoch,
+        "final_checkpoint": final_checkpoint,
+        "official_checkpoint": official_checkpoint,
         "history": state["history"],
     }
     _atomic_json_save(result, experiment_dir / "result.json")
@@ -467,7 +524,7 @@ def run_subset_experiment(
         config_path = config.experiment_dir / "config.json"
         with config_path.open("r", encoding="utf-8") as file:
             saved_config = json.load(file)
-        if saved_config != config.to_dict():
+        if _normalize_saved_config(saved_config) != config.to_dict():
             raise ValueError(
                 "Completed experiment configuration differs from the current "
                 "configuration. Use a different output_root."
@@ -514,7 +571,22 @@ def _write_summary(results: Sequence[Mapping[str, Any]], path: Path) -> None:
         writer = csv.DictWriter(file, fieldnames=SUMMARY_FIELDS)
         writer.writeheader()
         for result in results:
-            writer.writerow({name: result[name] for name in SUMMARY_FIELDS})
+            training_policy = result.get(
+                "training_policy",
+                CLIPCAP_EARLY_STOPPING_POLICY,
+            )
+            fallbacks = {
+                "training_policy": training_policy,
+                "final_epoch": None,
+                "final_checkpoint": None,
+                "official_checkpoint": result.get("best_checkpoint"),
+            }
+            writer.writerow(
+                {
+                    name: result.get(name, fallbacks.get(name))
+                    for name in SUMMARY_FIELDS
+                }
+            )
     os.replace(temporary_path, path)
 
 

@@ -26,8 +26,11 @@ def test_colab_training_uses_central_clipcap_configuration():
     assert "clipcap_training_config" not in source
     assert "from src.config.clipcap_config import" in source
     assert "SUBSETS_TO_TRAIN = CLIPCAP_TRAIN_SUBSETS" in source
-    assert "BASE_CONFIG = ClipCapTrainingConfig(" in source
+    assert "BASE_CONFIG = create_clipcap_fixed_epoch_config(" in source
     assert "output_root=CHECKPOINT_ROOT" in source
+    assert 'CHECKPOINT_ROOT = DRIVE_ROOT / "experiments_fixed_epoch"' in source
+    assert 'result["official_checkpoint"]' in source
+    assert 'result["final_epoch"] == BASE_CONFIG.max_epochs' in source
 
     copied_assignments = (
         "batch_size=32",
@@ -41,6 +44,8 @@ def test_colab_training_uses_central_clipcap_configuration():
         "num_layers=4",
         "num_heads=8",
         "dropout=0.1",
+        "max_epochs=7",
+        "training_policy=\"fixed_epoch\"",
     )
     for assignment in copied_assignments:
         assert assignment not in source

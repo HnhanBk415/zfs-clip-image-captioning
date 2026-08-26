@@ -48,6 +48,13 @@ CLIPCAP_MAX_EPOCHS = 50
 CLIPCAP_EARLY_STOPPING_PATIENCE = 5
 CLIPCAP_EARLY_STOPPING_MIN_DELTA = 0.0
 CLIPCAP_MAX_GRAD_NORM = 1.0
+CLIPCAP_EARLY_STOPPING_POLICY = "early_stopping"
+CLIPCAP_FIXED_EPOCH_POLICY = "fixed_epoch"
+CLIPCAP_TRAINING_POLICIES = (
+    CLIPCAP_EARLY_STOPPING_POLICY,
+    CLIPCAP_FIXED_EPOCH_POLICY,
+)
+CLIPCAP_FIXED_EPOCHS = 7
 
 
 @dataclass(frozen=True)
@@ -66,6 +73,7 @@ class ClipCapTrainingConfig:
     early_stopping_patience: int = CLIPCAP_EARLY_STOPPING_PATIENCE
     early_stopping_min_delta: float = CLIPCAP_EARLY_STOPPING_MIN_DELTA
     max_grad_norm: float = CLIPCAP_MAX_GRAD_NORM
+    training_policy: str = CLIPCAP_EARLY_STOPPING_POLICY
     clip_length: int = CLIPCAP_MAPPER_CLIP_LENGTH
     prefix_length: int = CLIPCAP_MAPPER_PREFIX_LENGTH
     num_layers: int = CLIPCAP_MAPPER_NUM_LAYERS
@@ -79,6 +87,12 @@ class ClipCapTrainingConfig:
             supported = ", ".join(CLIPCAP_TRAIN_SUBSETS)
             raise ValueError(
                 f"Unsupported subset_name '{self.subset_name}'. "
+                f"Expected one of: {supported}"
+            )
+        if self.training_policy not in CLIPCAP_TRAINING_POLICIES:
+            supported = ", ".join(CLIPCAP_TRAINING_POLICIES)
+            raise ValueError(
+                f"Unsupported training_policy '{self.training_policy}'. "
                 f"Expected one of: {supported}"
             )
 
@@ -163,6 +177,18 @@ class ClipCapTrainingConfig:
         data["adam_betas"] = list(self.adam_betas)
         data["output_root"] = str(self.output_root)
         return data
+
+
+def create_clipcap_fixed_epoch_config(
+    *,
+    output_root: str | Path = CLIPCAP_OUTPUT_ROOT,
+) -> ClipCapTrainingConfig:
+    """Create the centrally configured fixed-epoch experiment snapshot."""
+    return ClipCapTrainingConfig(
+        max_epochs=CLIPCAP_FIXED_EPOCHS,
+        training_policy=CLIPCAP_FIXED_EPOCH_POLICY,
+        output_root=Path(output_root),
+    )
 
 
 def setup_clipcap_directories() -> None:
