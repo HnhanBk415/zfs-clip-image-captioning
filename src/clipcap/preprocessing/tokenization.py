@@ -16,9 +16,23 @@ Responsibilities
 EDA/Exploration intentionally remains in the notebook:
     notebook/gpt2_tokenization.ipynb
 """
+import json
+from pathlib import Path
+from typing import Any, Dict, List
 
-
-from config import *
+import torch
+from transformers import AutoTokenizer
+from src.config.common_config import (
+    SPLIT_DIR,
+    SUBSET_DIR,
+    SUBSET_NAMES,
+)
+from src.config.clipcap_config import (
+    GPT2_MAX_LENGTH,
+    GPT2_MODEL_NAME,
+    TOKENIZED_DIR,
+    setup_clipcap_directories,
+)
 
 
 def load_json(path: Path) -> Dict[str, List[str]]:
@@ -31,7 +45,8 @@ def load_json(path: Path) -> Dict[str, List[str]]:
 
 def validate_split(split_name: str, data: Dict[str, Any]) -> None:
     """Validate structure and caption content in a single pass."""
-    assert isinstance(data, dict), f"{split_name} must be a dictionary."
+    if not isinstance(data, dict):
+        raise TypeError(f"{split_name} must be a dictionary")
 
     invalid_lists, invalid_types, empty_caps = [], [], []
 
@@ -45,9 +60,18 @@ def validate_split(split_name: str, data: Dict[str, Any]) -> None:
             elif not cap.strip():
                 empty_caps.append((img_id, cap))
 
-    assert not invalid_lists, f"{split_name} contains non-list captions: {len(invalid_lists)}"
-    assert not invalid_types, f"{split_name} contains non-string captions: {len(invalid_types)}"
-    assert not empty_caps, f"{split_name} contains empty captions: {len(empty_caps)}"
+    if invalid_lists:
+        raise TypeError(
+            f"{split_name} contains non-list captions: {len(invalid_lists)}"
+        )
+    if invalid_types:
+        raise TypeError(
+            f"{split_name} contains non-string captions: {len(invalid_types)}"
+        )
+    if empty_caps:
+        raise ValueError(
+            f"{split_name} contains empty captions: {len(empty_caps)}"
+        )
 
 
 def flatten_split(data: Dict[str, List[str]]) -> List[Dict[str, Any]]:
@@ -74,7 +98,10 @@ def tokenize_samples_batch(
 ) -> Dict[str, torch.Tensor]:
     """
     Batch tokenization appending EOS and padding to max_length.
-    Generates input_ids, attention_mask, and training labels (-100 for PAD).
+    Generates input_ids and attention_mask.
+
+    Training labels are intentionally created by the ClipCap model only when
+    loss computation is requested.
     """
     # Gắn sẵn EOS vào chuỗi để tận dụng C-Rust tokenizer tốc độ cao
     raw_texts = [s["caption"] + tokenizer.eos_token for s in samples]
@@ -97,14 +124,9 @@ def tokenize_samples_batch(
     row_idx = torch.arange(input_ids.shape[0])
     input_ids[row_idx, last_real_idx] = tokenizer.eos_token_id
 
-    # Labels cho Cross-Entropy (bỏ qua PAD với -100)
-    labels = input_ids.clone()
-    labels[attention_mask == 0] = -100
-
     return {
         "input_ids": input_ids,
         "attention_mask": attention_mask,
-        "labels": labels,
     }
 
 
@@ -121,7 +143,6 @@ def build_tokenized_data(
         "captions": [sample["caption"] for sample in samples],
         "input_ids": encoded["input_ids"],
         "attention_mask": encoded["attention_mask"],
-        "labels": encoded["labels"],
         "tokenizer_name": GPT2_MODEL_NAME,
         "max_length": max_length,
         "eos_token_id": tokenizer.eos_token_id,
@@ -140,19 +161,28 @@ def verify_tokenized_invariants(
     input_ids = data["input_ids"]
     attention_mask = data["attention_mask"]
 
-    assert len(data["caption_indices"]) == num_samples, f"{split_name}: caption_indices mismatch"
-    assert len(data["captions"]) == num_samples, f"{split_name}: captions mismatch"
-    assert input_ids.shape == (num_samples, max_length), f"{split_name}: input_ids shape mismatch"
-    assert attention_mask.shape == (num_samples, max_length), f"{split_name}: attention_mask shape mismatch"
+    if "labels" in data:
+        raise ValueError(
+            f"{split_name}: labels must be created by the model when computing loss"
+        )
+    if len(data["caption_indices"]) != num_samples:
+        raise ValueError(f"{split_name}: caption_indices mismatch")
+    if len(data["captions"]) != num_samples:
+        raise ValueError(f"{split_name}: captions mismatch")
+    if input_ids.shape != (num_samples, max_length):
+        raise ValueError(f"{split_name}: input_ids shape mismatch")
+    if attention_mask.shape != (num_samples, max_length):
+        raise ValueError(f"{split_name}: attention_mask shape mismatch")
 
     real_lengths = attention_mask.sum(dim=1)
     last_real_indices = real_lengths - 1
     row_indices = torch.arange(input_ids.shape[0])
     last_real_tokens = input_ids[row_indices, last_real_indices]
 
-    assert torch.all(
-        last_real_tokens == tokenizer.eos_token_id
-    ), f"{split_name}: Real sequence must terminate with EOS token."
+    if not torch.all(last_real_tokens == tokenizer.eos_token_id):
+        raise ValueError(
+            f"{split_name}: real sequence must terminate with EOS token"
+        )
 
 
 def verify_nested_subsets(subset_tokenized: Dict[str, Dict[str, Any]]) -> None:
@@ -160,12 +190,13 @@ def verify_nested_subsets(subset_tokenized: Dict[str, Dict[str, Any]]) -> None:
     previous_ids = set()
     for subset_name in SUBSET_NAMES:
         current_ids = set(subset_tokenized[subset_name]["image_ids"])
-        assert previous_ids.issubset(current_ids), f"Nested subset violation at {subset_name}"
+        if not previous_ids.issubset(current_ids):
+            raise ValueError(f"Nested subset violation at {subset_name}")
         previous_ids = current_ids
 
 
 def main():
-    setup_directories()
+    setup_clipcap_directories()
     TOKENIZED_DIR.mkdir(parents=True, exist_ok=True)
 
     print("=" * 60)
@@ -181,7 +212,7 @@ def main():
 
     for name, data in splits.items():
         validate_split(name, data)
-        print(f"✓ {name.capitalize():5}: {len(data):,} images | {sum(len(v) for v in data.values()):,} captions")
+        print(f"{name.capitalize():5}: {len(data):,} images | {sum(len(v) for v in data.values()):,} captions")
 
     print("\n[2/4] Initializing Tokenizer...")
     tokenizer = setup_tokenizer(GPT2_MODEL_NAME)
@@ -198,7 +229,7 @@ def main():
         save_path = TOKENIZED_DIR / f"{name}.pt"
         torch.save(packed, save_path)
         tokenized_splits[name] = packed
-        print(f"✓ Saved {name}.pt | Tensor shape: {packed['input_ids'].shape}")
+        print(f"Saved {name}.pt | Tensor shape: {packed['input_ids'].shape}")
 
     print("\n[4/4] Tokenizing nested subsets...")
     subset_tokenized = {}
@@ -213,7 +244,7 @@ def main():
         save_path = TOKENIZED_DIR / f"{subset_name}.pt"
         torch.save(packed_subset, save_path)
         subset_tokenized[subset_name] = packed_subset
-        print(f"✓ Saved {subset_name}.pt | Samples: {len(subset_samples):,}")
+        print(f"Saved {subset_name}.pt | Samples: {len(subset_samples):,}")
 
     verify_nested_subsets(subset_tokenized)
 

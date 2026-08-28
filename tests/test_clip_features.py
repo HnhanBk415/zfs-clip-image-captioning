@@ -11,7 +11,6 @@ from PIL import Image
 
 
 fake_import_modules = {
-    "config": ModuleType("config"),
     "kagglehub": ModuleType("kagglehub"),
     "torch": ModuleType("torch"),
     "transformers": ModuleType("transformers"),
@@ -21,12 +20,13 @@ fake_import_modules["transformers"].CLIPProcessor = object
 
 with patch.dict(sys.modules, fake_import_modules):
     clip_features_module = importlib.import_module(
-        "src.preprocessing.clip_features"
+        "src.clipcap.preprocessing.clip_features"
     )
 
 _get_feature_tensor = clip_features_module._get_feature_tensor
 extract_clip_features = clip_features_module.extract_clip_features
 load_split_image_ids = clip_features_module.load_split_image_ids
+run_clip_feature_extraction = clip_features_module.run_clip_feature_extraction
 
 
 class FakeTensor:
@@ -121,6 +121,27 @@ class FakeClipModel:
 
 
 class ClipFeaturesTest(unittest.TestCase):
+    def test_configured_extraction_calls_directory_setup(self):
+        expected = {"status": "ok"}
+        with (
+            patch.object(
+                clip_features_module,
+                "setup_clipcap_directories",
+            ) as setup_directories,
+            patch.object(
+                clip_features_module,
+                "extract_clip_features",
+                return_value=expected,
+            ),
+        ):
+            result = run_clip_feature_extraction(
+                dataset_path="dataset-cache",
+                show_progress=False,
+            )
+
+        setup_directories.assert_called_once_with()
+        self.assertEqual(result, expected)
+
     def test_split_ids_are_sorted_and_disjoint(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             split_dir = Path(temporary_directory)

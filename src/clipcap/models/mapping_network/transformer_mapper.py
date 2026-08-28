@@ -1,5 +1,15 @@
 from torch import Tensor, nn
 
+from src.config.clipcap_config import (
+    CLIPCAP_MAPPER_CLIP_LENGTH,
+    CLIPCAP_MAPPER_DROPOUT,
+    CLIPCAP_MAPPER_FEEDFORWARD_DIM,
+    CLIPCAP_MAPPER_FEEDFORWARD_MULTIPLIER,
+    CLIPCAP_MAPPER_NUM_HEADS,
+    CLIPCAP_MAPPER_NUM_LAYERS,
+    CLIPCAP_MAPPER_PREFIX_LENGTH,
+)
+
 from .clip_projection import ClipProjection
 from .prefix_encoder import PrefixTransformerEncoder
 
@@ -18,12 +28,12 @@ class TransformerMapper(nn.Module):
         self,
         clip_dim: int,
         embedding_dim: int,
-        clip_length: int = 10,
-        prefix_length: int = 10,
-        num_layers: int = 4,
-        num_heads: int = 8,
-        feedforward_dim: int | None = None,
-        dropout: float = 0.1,
+        clip_length: int = CLIPCAP_MAPPER_CLIP_LENGTH,
+        prefix_length: int = CLIPCAP_MAPPER_PREFIX_LENGTH,
+        num_layers: int = CLIPCAP_MAPPER_NUM_LAYERS,
+        num_heads: int = CLIPCAP_MAPPER_NUM_HEADS,
+        feedforward_dim: int | None = CLIPCAP_MAPPER_FEEDFORWARD_DIM,
+        dropout: float = CLIPCAP_MAPPER_DROPOUT,
     ) -> None:
         super().__init__()
 
@@ -44,7 +54,7 @@ class TransformerMapper(nn.Module):
         self.clip_length = clip_length
         self.prefix_length = prefix_length
         self.feedforward_dim = (
-            4 * embedding_dim
+            CLIPCAP_MAPPER_FEEDFORWARD_MULTIPLIER * embedding_dim
             if feedforward_dim is None
             else feedforward_dim
         )

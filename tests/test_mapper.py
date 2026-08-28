@@ -1,8 +1,12 @@
 import pytest
 import torch
 
-from src.mapping_network.prefix_encoder import PrefixTransformerEncoder
-from src.mapping_network.transformer_mapper import TransformerMapper
+from src.clipcap.models.mapping_network.prefix_encoder import (
+    PrefixTransformerEncoder,
+)
+from src.clipcap.models.mapping_network.transformer_mapper import (
+    TransformerMapper,
+)
 
 
 TEST_CLIP_DIM = 32

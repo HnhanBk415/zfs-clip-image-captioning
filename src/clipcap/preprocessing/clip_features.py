@@ -10,8 +10,16 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Any, Sequence
-
-import config as project_config
+from src.config.common_config import (
+    KAGGLE_DATASET_HANDLE,
+    SPLIT_DIR,
+)
+from src.config.clipcap_config import (
+    CLIP_BATCH_SIZE,
+    CLIP_MODEL_NAME,
+    FEATURE_DIR,
+    setup_clipcap_directories,
+)
 import kagglehub
 import torch
 from PIL import Image
@@ -170,21 +178,21 @@ def run_clip_feature_extraction(
     show_progress: bool = True,
 ) -> dict[str, Any]:
     """Run feature extraction with paths and settings from project config."""
-    project_config.setup_directories()
+    setup_clipcap_directories()
 
     if dataset_path is None:
         resolved_dataset_path = Path(
-            kagglehub.dataset_download(project_config.KAGGLE_DATASET_HANDLE)
+            kagglehub.dataset_download(KAGGLE_DATASET_HANDLE)
         )
     else:
         resolved_dataset_path = Path(dataset_path)
 
     return extract_clip_features(
-        split_dir=project_config.SPLIT_DIR,
+        split_dir=SPLIT_DIR,
         images_dir=resolved_dataset_path / "Images",
-        feature_dir=project_config.FEATURE_DIR,
-        model_name=project_config.CLIP_MODEL_NAME,
-        batch_size=project_config.CLIP_BATCH_SIZE,
+        feature_dir=FEATURE_DIR,
+        model_name=CLIP_MODEL_NAME,
+        batch_size=CLIP_BATCH_SIZE,
         show_progress=show_progress,
     )
 

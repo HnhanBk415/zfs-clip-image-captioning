@@ -2,12 +2,6 @@
 # -*- coding: utf-8 -*-
 
 """
-Flickr8k Dataset Preparation Pipeline
-
-Responsibilities
-----------------
-1. Download/load Flickr8k from KaggleHub.
-2. Audit raw image/caption integrity.
 3. Normalize and validate captions.
 4. Enforce exactly 5 valid captions per image.
 5. Split by IMAGE into train/val/test.
@@ -17,10 +11,38 @@ Responsibilities
 9. Verify dataset invariants.
 
 EDA/visualization intentionally remains in the notebook:
-    notebook/flickr8k_exploration.ipynb
-"""
+    notebook/flickr8k_exploration.ipynbFlickr8k Dataset Preparation Pipeline
 
-from config import *
+Responsibilities
+----------------
+1. Download/load Flickr8k from KaggleHub.
+2. Audit raw image/caption integrity.
+
+"""
+import json
+import random
+import re
+import string
+import unicodedata
+from pathlib import Path
+
+import kagglehub
+import pandas as pd
+from PIL import Image
+from tqdm import tqdm
+from src.config.common_config import (
+    KAGGLE_DATASET_HANDLE,
+    METADATA_DIR,
+    SEED,
+    SPLIT_DIR,
+    SUBSET_DIR,
+    SUBSET_NAMES,
+    TEST_RATIO,
+    TRAIN_RATIO,
+    TRAIN_SUBSET_RATIOS,
+    VAL_RATIO,
+    setup_common_directories,
+)
 
 # Data-policy parameters belong here rather than being hidden in runtime logic.
 STRICT_CAPTIONS_PER_IMAGE = 5
@@ -350,10 +372,14 @@ def split_by_image(valid_data: dict):
     val_set = set(val_ids)
     test_set = set(test_ids)
 
-    assert train_set.isdisjoint(val_set)
-    assert train_set.isdisjoint(test_set)
-    assert val_set.isdisjoint(test_set)
-    assert (train_set | val_set | test_set) == set(image_ids)
+    if not train_set.isdisjoint(val_set):
+        raise ValueError("Train and validation splits share image IDs")
+    if not train_set.isdisjoint(test_set):
+        raise ValueError("Train and test splits share image IDs")
+    if not val_set.isdisjoint(test_set):
+        raise ValueError("Validation and test splits share image IDs")
+    if (train_set | val_set | test_set) != set(image_ids):
+        raise ValueError("Split image IDs do not cover the valid dataset")
 
     return train_ids, val_ids, test_ids
 
@@ -435,7 +461,8 @@ def generate_nested_subsets(valid_data: dict, train_ids):
         save_json(subset_dict, SUBSET_DIR / f"{name}.json")
 
         current_ids = set(subset_ids)
-        assert previous_ids.issubset(current_ids)
+        if not previous_ids.issubset(current_ids):
+            raise ValueError(f"Nested subset violation at {name}")
         previous_ids = current_ids
 
         results[name] = {
@@ -458,20 +485,28 @@ def generate_nested_subsets(valid_data: dict, train_ids):
 
 def validate_final_invariants(valid_data, split_data):
     """Fail fast if the prepared dataset violates core assumptions."""
-    assert valid_data, "No valid images remain after preprocessing."
+    if not valid_data:
+        raise ValueError("No valid images remain after preprocessing")
 
-    assert all(
-        len(captions) == STRICT_CAPTIONS_PER_IMAGE
-        for captions in valid_data.values()
-    )
+    invalid_caption_counts = [
+        image_id
+        for image_id, captions in valid_data.items()
+        if len(captions) != STRICT_CAPTIONS_PER_IMAGE
+    ]
+    if invalid_caption_counts:
+        raise ValueError(
+            "Valid dataset contains images without exactly "
+            f"{STRICT_CAPTIONS_PER_IMAGE} captions"
+        )
 
     for split_name, split_dict in split_data.items():
         expected = len(split_dict) * STRICT_CAPTIONS_PER_IMAGE
         actual = sum(len(captions) for captions in split_dict.values())
 
-        assert actual == expected, (
-            f"{split_name}: expected {expected} captions, got {actual}"
-        )
+        if actual != expected:
+            raise ValueError(
+                f"{split_name}: expected {expected} captions, got {actual}"
+            )
 
 
 # ============================================================
@@ -479,7 +514,7 @@ def validate_final_invariants(valid_data, split_data):
 # ============================================================
 
 def main():
-    setup_directories()
+    setup_common_directories()
 
     print("=" * 60)
     print("FLICKR8K DATASET PREPARATION PIPELINE")
