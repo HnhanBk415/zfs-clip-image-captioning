@@ -78,7 +78,6 @@ def generation_result_to_record(
 ) -> dict[str, Any]:
     return {
         "image_id": item.image_id,
-        "references": list(item.references),
         "subset_name": subset_name,
         "seed": seed,
         "checkpoint": FINAL_CHECKPOINT_NAME,
