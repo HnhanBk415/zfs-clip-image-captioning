@@ -372,10 +372,14 @@ def split_by_image(valid_data: dict):
     val_set = set(val_ids)
     test_set = set(test_ids)
 
-    assert train_set.isdisjoint(val_set)
-    assert train_set.isdisjoint(test_set)
-    assert val_set.isdisjoint(test_set)
-    assert (train_set | val_set | test_set) == set(image_ids)
+    if not train_set.isdisjoint(val_set):
+        raise ValueError("Train and validation splits share image IDs")
+    if not train_set.isdisjoint(test_set):
+        raise ValueError("Train and test splits share image IDs")
+    if not val_set.isdisjoint(test_set):
+        raise ValueError("Validation and test splits share image IDs")
+    if (train_set | val_set | test_set) != set(image_ids):
+        raise ValueError("Split image IDs do not cover the valid dataset")
 
     return train_ids, val_ids, test_ids
 
@@ -457,7 +461,8 @@ def generate_nested_subsets(valid_data: dict, train_ids):
         save_json(subset_dict, SUBSET_DIR / f"{name}.json")
 
         current_ids = set(subset_ids)
-        assert previous_ids.issubset(current_ids)
+        if not previous_ids.issubset(current_ids):
+            raise ValueError(f"Nested subset violation at {name}")
         previous_ids = current_ids
 
         results[name] = {
@@ -480,20 +485,28 @@ def generate_nested_subsets(valid_data: dict, train_ids):
 
 def validate_final_invariants(valid_data, split_data):
     """Fail fast if the prepared dataset violates core assumptions."""
-    assert valid_data, "No valid images remain after preprocessing."
+    if not valid_data:
+        raise ValueError("No valid images remain after preprocessing")
 
-    assert all(
-        len(captions) == STRICT_CAPTIONS_PER_IMAGE
-        for captions in valid_data.values()
-    )
+    invalid_caption_counts = [
+        image_id
+        for image_id, captions in valid_data.items()
+        if len(captions) != STRICT_CAPTIONS_PER_IMAGE
+    ]
+    if invalid_caption_counts:
+        raise ValueError(
+            "Valid dataset contains images without exactly "
+            f"{STRICT_CAPTIONS_PER_IMAGE} captions"
+        )
 
     for split_name, split_dict in split_data.items():
         expected = len(split_dict) * STRICT_CAPTIONS_PER_IMAGE
         actual = sum(len(captions) for captions in split_dict.values())
 
-        assert actual == expected, (
-            f"{split_name}: expected {expected} captions, got {actual}"
-        )
+        if actual != expected:
+            raise ValueError(
+                f"{split_name}: expected {expected} captions, got {actual}"
+            )
 
 
 # ============================================================
@@ -501,7 +514,7 @@ def validate_final_invariants(valid_data, split_data):
 # ============================================================
 
 def main():
-    setup_common_directories
+    setup_common_directories()
 
     print("=" * 60)
     print("FLICKR8K DATASET PREPARATION PIPELINE")

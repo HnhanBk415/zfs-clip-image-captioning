@@ -2,13 +2,15 @@ pandas
 matplotlib
 Pillow
 tqdm
-pyprojroot
 numpy
 
 # Thư viện hỗ trợ model
 torch
+torchvision
 transformers
 kagglehub
+pycocoevalcap
 
 # Thư viện hỗ trợ chạy test
 pytest
+ipykernel

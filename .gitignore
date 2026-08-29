@@ -223,3 +223,6 @@ __marimo__/
 data/flickr8k/raw/
 data/flickr8k/features/
 data/flickr8k/tokenized/
+
+# Training artifacts
+outputs/

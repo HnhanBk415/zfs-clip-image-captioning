@@ -1,3 +1,5 @@
+"""Tests for CLIP feature preprocessing."""
+
 import importlib
 import json
 import sys
@@ -26,6 +28,7 @@ with patch.dict(sys.modules, fake_import_modules):
 _get_feature_tensor = clip_features_module._get_feature_tensor
 extract_clip_features = clip_features_module.extract_clip_features
 load_split_image_ids = clip_features_module.load_split_image_ids
+run_clip_feature_extraction = clip_features_module.run_clip_feature_extraction
 
 
 class FakeTensor:
@@ -120,6 +123,27 @@ class FakeClipModel:
 
 
 class ClipFeaturesTest(unittest.TestCase):
+    def test_configured_extraction_calls_directory_setup(self):
+        expected = {"status": "ok"}
+        with (
+            patch.object(
+                clip_features_module,
+                "setup_clipcap_directories",
+            ) as setup_directories,
+            patch.object(
+                clip_features_module,
+                "extract_clip_features",
+                return_value=expected,
+            ),
+        ):
+            result = run_clip_feature_extraction(
+                dataset_path="dataset-cache",
+                show_progress=False,
+            )
+
+        setup_directories.assert_called_once_with()
+        self.assertEqual(result, expected)
+
     def test_split_ids_are_sorted_and_disjoint(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             split_dir = Path(temporary_directory)

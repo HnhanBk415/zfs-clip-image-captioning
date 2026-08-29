@@ -16,10 +16,10 @@ Tài liệu này tổng hợp các nội dung đã thống nhất về mapping n
 Notebook review đã được thảo luận với đường dẫn dự kiến:
 
 ```text
-notebook/modeling/transformer_mapper.ipynb
+notebook/clipcap/modeling/mapping_network/transformer_mapper.ipynb
 ```
 
-Tại thời điểm cập nhật tài liệu này, notebook trên không có trong working tree. Nhóm cần tạo hoặc khôi phục notebook trước bước review. Hiện tại cũng chưa thêm implementation chính thức vào `src/models`.
+Notebook hiện có tại đường dẫn trên. Implementation chính thức tương ứng nằm trong `src/clipcap/models/mapping_network`.
 
 ## 2. Trạng thái pipeline
 
@@ -706,7 +706,7 @@ Prefix dài làm tăng sequence length của GPT-2, kéo theo chi phí attention
 2. Giữ `clip_length=10` và `prefix_length=10` cho baseline hay không?
 3. Giai đoạn đầu đóng băng toàn bộ GPT-2 hay mở một số block cuối?
 4. Có tách `ClipProjection` và `PrefixTransformer` thành hai class công khai hay chỉ giữ một `TransformerMapper` duy nhất?
-5. Có đưa hyperparameter vào `config.py` ngay hay chờ sau khi notebook được duyệt?
+5. Hyperparameter production được tập trung trong `src/config/clipcap_config.py`.
 6. Có cần benchmark thêm MLP mapper để làm baseline so sánh không?
 7. Tiêu chí chọn model tốt nhất là validation loss, BLEU, METEOR, ROUGE-L, CIDEr hay kết hợp nhiều metric?
 
