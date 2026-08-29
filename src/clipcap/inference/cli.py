@@ -11,6 +11,7 @@ from transformers import AutoTokenizer, CLIPModel, CLIPProcessor, GPT2LMHeadMode
 
 from src.clipcap.models.clipcap_model import ClipCaptionModel
 from src.config.clipcap_config import (
+    CLIPCAP_CHECKPOINT_ROOT,
     CLIPCAP_DEFAULT_INFERENCE_CONFIG,
     CLIPCAP_FIXED_EPOCH_POLICY,
     CLIPCAP_OUTPUT_ROOT,
@@ -85,7 +86,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--checkpoint-root",
         type=Path,
-        default=Path(CLIPCAP_OUTPUT_ROOT),
+        default=Path(CLIPCAP_CHECKPOINT_ROOT),
     )
     parser.add_argument(
         "--subsets",

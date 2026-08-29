@@ -22,6 +22,7 @@ from src.config.common_config import CLIP_MODEL_NAME
 class CaptionMetricArtifacts:
     summary_path: Path
     per_image_path: Path
+    model_metric_paths: Mapping[str, Path]
     results: tuple[dict[str, Any], ...]
 
 
@@ -346,6 +347,12 @@ def validate_run_config(
     return payload
 
 
+def _model_metrics_path(prediction_path: Path) -> Path:
+    if prediction_path.stem == "captions":
+        return prediction_path.with_name("metrics.json")
+    return prediction_path.with_name(f"{prediction_path.stem}_metrics.json")
+
+
 def run_caption_evaluation(
     *,
     inference_manifest_path: str | Path,
@@ -449,30 +456,69 @@ def run_caption_evaluation(
         row["rank"] = rank
 
     selected_output_dir.mkdir(parents=True, exist_ok=True)
-    summary_path = selected_output_dir / "summary.json"
-    per_image_path = selected_output_dir / "per_image_scores.csv"
+    summary_path = selected_output_dir / "comparison.json"
+    per_image_path = selected_output_dir / "per_image_comparison.csv"
+    generated_at_utc = datetime.now(timezone.utc).isoformat()
+    metric_scales = {
+        "CIDEr": "raw CIDEr multiplied by 100; not a percentage",
+        "BLEU-4": "corpus BLEU-4 multiplied by 100",
+        "CLIPScore": "max(100 * cosine_similarity, 0)",
+    }
+    inference_manifest_sha256 = sha256_file(inference_manifest)
+    references_sha256 = sha256_file(reference_manifest)
+    prediction_sha256 = {
+        label: sha256_file(path)
+        for label, path in selected_prediction_paths.items()
+    }
+    model_metric_paths: dict[str, Path] = {}
+    for row in summary_rows:
+        label = row["experiment"]
+        prediction_path = selected_prediction_paths[label]
+        model_metric_path = _model_metrics_path(prediction_path)
+        model_metric_path.parent.mkdir(parents=True, exist_ok=True)
+        model_metric_artifact = {
+            "generated_at_utc": generated_at_utc,
+            "experiment": label,
+            "metric_scales": metric_scales,
+            "metrics": {
+                "CIDEr": row["CIDEr"],
+                "BLEU-4": row["BLEU-4"],
+                "CLIPScore": row["CLIPScore"],
+            },
+            "inference_manifest_path": str(inference_manifest.resolve()),
+            "inference_manifest_sha256": inference_manifest_sha256,
+            "references_path": str(reference_manifest.resolve()),
+            "references_sha256": references_sha256,
+            "prediction_path": str(prediction_path.resolve()),
+            "prediction_sha256": prediction_sha256[label],
+            "coverage": coverage[label],
+            "metadata": dict(experiment_details.get(label, {})),
+        }
+        with model_metric_path.open("w", encoding="utf-8") as file:
+            json.dump(model_metric_artifact, file, ensure_ascii=False, indent=2)
+        model_metric_paths[label] = model_metric_path
     artifact: dict[str, Any] = {
-        "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+        "generated_at_utc": generated_at_utc,
         "ranking_policy": ["CIDEr", "BLEU-4"],
         "supplementary_metric": "CLIPScore",
-        "metric_scales": {
-            "CIDEr": "raw CIDEr multiplied by 100; not a percentage",
-            "BLEU-4": "corpus BLEU-4 multiplied by 100",
-            "CLIPScore": "max(100 * cosine_similarity, 0)",
-        },
+        "metric_scales": metric_scales,
         "inference_manifest_path": str(inference_manifest.resolve()),
-        "inference_manifest_sha256": sha256_file(inference_manifest),
+        "inference_manifest_sha256": inference_manifest_sha256,
         "references_path": str(reference_manifest.resolve()),
-        "references_sha256": sha256_file(reference_manifest),
+        "references_sha256": references_sha256,
         "feature_cache_path": str(Path(feature_cache_path).resolve()),
         "coverage": coverage,
         "results": summary_rows,
         "prediction_files": {
             label: {
                 "path": str(path.resolve()),
-                "sha256": sha256_file(path),
+                "sha256": prediction_sha256[label],
             }
             for label, path in selected_prediction_paths.items()
+        },
+        "model_metric_files": {
+            label: str(path.resolve())
+            for label, path in model_metric_paths.items()
         },
         "metadata": dict(artifact_metadata or {}),
     }
@@ -500,6 +546,7 @@ def run_caption_evaluation(
     return CaptionMetricArtifacts(
         summary_path=summary_path,
         per_image_path=per_image_path,
+        model_metric_paths=model_metric_paths,
         results=tuple(summary_rows),
     )
 
@@ -559,8 +606,10 @@ def main(argv: Sequence[str] | None = None) -> None:
             f"BLEU-4={row['BLEU-4']:.4f} "
             f"CLIPScore={row['CLIPScore']:.4f}"
         )
-    print(f"Summary: {artifacts.summary_path}")
-    print(f"Per-image scores: {artifacts.per_image_path}")
+    for label, path in artifacts.model_metric_paths.items():
+        print(f"{label} metrics: {path}")
+    print(f"Comparison: {artifacts.summary_path}")
+    print(f"Per-image comparison: {artifacts.per_image_path}")
 
 
 if __name__ == "__main__":

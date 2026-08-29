@@ -53,6 +53,7 @@ def test_generation_notebook_selects_split_and_only_runs_inference():
     source = _code_source(GENERATION_NOTEBOOK)
 
     assert "CLIPCAP_DEFAULT_INFERENCE_CONFIG" in source
+    assert "CLIPCAP_CHECKPOINT_ROOT" in source
     assert "ClipCapInferenceConfig(" in source
     assert "ZFS_CLIP_SPLIT_NAME" in source
     assert "ZFS_CLIP_ALLOW_TEST" in source

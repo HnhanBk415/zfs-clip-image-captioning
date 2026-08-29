@@ -76,10 +76,15 @@ def test_run_caption_evaluation_writes_common_artifacts(
 ):
     manifest_path = tmp_path / "ids.json"
     references_path = tmp_path / "references.json"
-    prediction_path = tmp_path / "predictions.jsonl"
+    clipcap_dir = tmp_path / "clipcap"
+    zerocap_dir = tmp_path / "zerocap"
+    clipcap_dir.mkdir()
+    zerocap_dir.mkdir()
+    prediction_path = clipcap_dir / "captions.jsonl"
+    zerocap_prediction_path = zerocap_dir / "captions.json"
     run_config_path = tmp_path / "run_config.json"
     feature_cache_path = tmp_path / "features.pt"
-    output_dir = tmp_path / "metrics"
+    output_dir = tmp_path / "model_comparison"
     image_ids = ["a.jpg", "b.jpg"]
     _write_json(manifest_path, image_ids)
     _write_json(
@@ -95,6 +100,10 @@ def test_run_caption_evaluation_writes_common_artifacts(
             for image_id in image_ids
         ),
         encoding="utf-8",
+    )
+    _write_json(
+        zerocap_prediction_path,
+        {image_id: f"zerocap caption {image_id}" for image_id in image_ids},
     )
     _write_json(
         run_config_path,
@@ -144,7 +153,10 @@ def test_run_caption_evaluation_writes_common_artifacts(
     artifacts = caption_metrics.run_caption_evaluation(
         inference_manifest_path=manifest_path,
         references_path=references_path,
-        prediction_paths={"clipcap": prediction_path},
+        prediction_paths={
+            "clipcap": prediction_path,
+            "zerocap": zerocap_prediction_path,
+        },
         feature_cache_path=feature_cache_path,
         output_dir=output_dir,
         run_config_path=run_config_path,
@@ -153,11 +165,29 @@ def test_run_caption_evaluation_writes_common_artifacts(
     )
 
     summary = json.loads(artifacts.summary_path.read_text(encoding="utf-8"))
+    clipcap_metrics = json.loads(
+        artifacts.model_metric_paths["clipcap"].read_text(encoding="utf-8")
+    )
+    zerocap_metrics = json.loads(
+        artifacts.model_metric_paths["zerocap"].read_text(encoding="utf-8")
+    )
     with artifacts.per_image_path.open("r", encoding="utf-8", newline="") as file:
         per_image_rows = list(csv.DictReader(file))
     assert summary["metadata"] == {"split": "val"}
+    assert artifacts.summary_path.name == "comparison.json"
+    assert artifacts.per_image_path.name == "per_image_comparison.csv"
+    assert artifacts.model_metric_paths["clipcap"] == clipcap_dir / "metrics.json"
+    assert artifacts.model_metric_paths["zerocap"] == zerocap_dir / "metrics.json"
+    assert clipcap_metrics["experiment"] == "clipcap"
+    assert clipcap_metrics["metrics"]["CIDEr"] == 50.0
+    assert clipcap_metrics["coverage"]["num_predictions"] == 2
+    assert zerocap_metrics["experiment"] == "zerocap"
+    assert zerocap_metrics["metrics"]["BLEU-4"] == 25.0
+    assert summary["model_metric_files"]["clipcap"] == str(
+        (clipcap_dir / "metrics.json").resolve()
+    )
     assert summary["coverage"]["clipcap"]["num_predictions"] == 2
     assert summary["results"][0]["CIDEr"] == 50.0
     assert summary["results"][0]["BLEU-4"] == 25.0
     assert summary["results"][0]["CLIPScore"] == 30.0
-    assert len(per_image_rows) == 2
+    assert len(per_image_rows) == 4

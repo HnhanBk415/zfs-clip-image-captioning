@@ -18,6 +18,7 @@ from src.config.common_config import (
 FEATURE_DIR = DATA_ROOT / "features"
 TOKENIZED_DIR = DATA_ROOT / "tokenized"
 CLIPCAP_OUTPUT_ROOT = PROJECT_ROOT / "outputs" / "clipcap"
+CLIPCAP_CHECKPOINT_ROOT = CLIPCAP_OUTPUT_ROOT / "checkpoints"
 
 # Pretrained models and preprocessing
 CLIP_BATCH_SIZE = 32
@@ -131,7 +132,7 @@ class ClipCapTrainingConfig:
     num_heads: int = CLIPCAP_MAPPER_NUM_HEADS
     feedforward_dim: int | None = CLIPCAP_MAPPER_FEEDFORWARD_DIM
     dropout: float = CLIPCAP_MAPPER_DROPOUT
-    output_root: Path = CLIPCAP_OUTPUT_ROOT
+    output_root: Path = CLIPCAP_CHECKPOINT_ROOT
 
     def __post_init__(self) -> None:
         if self.subset_name not in CLIPCAP_TRAIN_SUBSETS:
@@ -232,7 +233,7 @@ class ClipCapTrainingConfig:
 
 def create_clipcap_fixed_epoch_config(
     *,
-    output_root: str | Path = CLIPCAP_OUTPUT_ROOT,
+    output_root: str | Path = CLIPCAP_CHECKPOINT_ROOT,
 ) -> ClipCapTrainingConfig:
     """Create the centrally configured fixed-epoch experiment snapshot."""
     return ClipCapTrainingConfig(

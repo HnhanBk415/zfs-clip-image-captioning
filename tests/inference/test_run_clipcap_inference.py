@@ -9,6 +9,7 @@ import pytest
 
 import src.clipcap.inference.run_inference as run_inference
 from src.config.clipcap_config import (
+    CLIPCAP_CHECKPOINT_ROOT,
     CLIPCAP_DEFAULT_INFERENCE_CONFIG,
     ClipCapInferenceConfig,
 )
@@ -61,6 +62,14 @@ def _base_arguments(paths: dict[str, Path]) -> list[str]:
 
 def _value_after(arguments: list[str], option: str) -> str:
     return arguments[arguments.index(option) + 1]
+
+
+def test_inference_defaults_to_dedicated_checkpoint_root():
+    args = run_inference._parse_args(
+        ["--dataset", "val", "--run-tag", "baseline_v1"]
+    )
+
+    assert args.checkpoint_root == CLIPCAP_CHECKPOINT_ROOT
 
 
 def test_validation_full_resolves_to_val_manifest(

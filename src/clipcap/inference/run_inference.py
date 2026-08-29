@@ -9,6 +9,7 @@ from typing import Sequence
 
 from .cli import main as inference_main
 from src.config.clipcap_config import (
+    CLIPCAP_CHECKPOINT_ROOT,
     CLIPCAP_DEFAULT_INFERENCE_CONFIG,
     CLIPCAP_OUTPUT_ROOT,
     CLIPCAP_TRAIN_SUBSETS,
@@ -76,7 +77,10 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--checkpoint-root",
         type=Path,
-        default=_environment_path("ZFS_CLIP_CHECKPOINT_ROOT", CLIPCAP_OUTPUT_ROOT),
+        default=_environment_path(
+            "ZFS_CLIP_CHECKPOINT_ROOT",
+            CLIPCAP_CHECKPOINT_ROOT,
+        ),
     )
     parser.add_argument(
         "--feature-cache",
