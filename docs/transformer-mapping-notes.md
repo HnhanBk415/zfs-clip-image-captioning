@@ -16,10 +16,10 @@ Tài liệu này tổng hợp các nội dung đã thống nhất về mapping n
 Notebook review đã được thảo luận với đường dẫn dự kiến:
 
 ```text
-notebook/modeling/transformer_mapper.ipynb
+notebook/clipcap/modeling/mapping_network/transformer_mapper.ipynb
 ```
 
-Tại thời điểm cập nhật tài liệu này, notebook trên không có trong working tree. Nhóm cần tạo hoặc khôi phục notebook trước bước review. Hiện tại cũng chưa thêm implementation chính thức vào `src/models`.
+Notebook hiện có tại đường dẫn trên. Implementation chính thức tương ứng nằm trong `src/clipcap/models/mapping_network`.
 
 ## 2. Trạng thái pipeline
 

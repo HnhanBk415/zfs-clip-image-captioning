@@ -11,10 +11,13 @@ from transformers import AutoTokenizer, CLIPModel, CLIPProcessor, GPT2LMHeadMode
 
 from src.clipcap.models.clipcap_model import ClipCaptionModel
 from src.config.clipcap_config import (
+    CLIPCAP_DEFAULT_INFERENCE_CONFIG,
     CLIPCAP_FIXED_EPOCH_POLICY,
     CLIPCAP_OUTPUT_ROOT,
+    CLIPCAP_TRAIN_SEED,
     CLIPCAP_TRAIN_SUBSETS,
     CLIP_MODEL_NAME,
+    ClipCapInferenceConfig,
 )
 
 from .checkpoints import (
@@ -23,7 +26,7 @@ from .checkpoints import (
     resolve_fixed_epoch_checkpoints,
 )
 from .decoding import generate_caption_from_feature
-from .evaluation import (
+from .inference_runner import (
     generation_result_to_record,
     prepare_run_config,
     run_evaluation,
@@ -90,24 +93,60 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         choices=CLIPCAP_TRAIN_SUBSETS,
         default=list(CLIPCAP_TRAIN_SUBSETS),
     )
-    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--seed", type=int, default=CLIPCAP_TRAIN_SEED)
     parser.add_argument(
         "--output-dir",
         type=Path,
         default=Path(CLIPCAP_OUTPUT_ROOT) / "evaluation",
     )
     parser.add_argument("--device", default="auto")
-    parser.add_argument("--image-batch-size", type=int, default=32)
-    parser.add_argument("--max-new-tokens", type=int, default=15)
-    parser.add_argument("--num-beams", type=int, default=5)
-    parser.add_argument("--num-return-sequences", type=int, default=5)
-    parser.add_argument("--length-penalty", type=float, default=1.0)
-    parser.add_argument("--no-early-stopping", action="store_true")
+    parser.add_argument(
+        "--image-batch-size",
+        type=int,
+        default=CLIPCAP_DEFAULT_INFERENCE_CONFIG.image_batch_size,
+    )
+    parser.add_argument(
+        "--max-new-tokens",
+        type=int,
+        default=CLIPCAP_DEFAULT_INFERENCE_CONFIG.max_new_tokens,
+    )
+    parser.add_argument(
+        "--num-beams",
+        type=int,
+        default=CLIPCAP_DEFAULT_INFERENCE_CONFIG.num_beams,
+    )
+    parser.add_argument(
+        "--num-return-sequences",
+        type=int,
+        default=CLIPCAP_DEFAULT_INFERENCE_CONFIG.num_return_sequences,
+    )
+    parser.add_argument(
+        "--length-penalty",
+        type=float,
+        default=CLIPCAP_DEFAULT_INFERENCE_CONFIG.length_penalty,
+    )
+    parser.add_argument(
+        "--early-stopping",
+        action=argparse.BooleanOptionalAction,
+        default=CLIPCAP_DEFAULT_INFERENCE_CONFIG.early_stopping,
+    )
     parser.add_argument("--no-resume", action="store_true")
     return parser.parse_args(argv)
 
 
+def _inference_config_from_args(args: argparse.Namespace) -> ClipCapInferenceConfig:
+    return ClipCapInferenceConfig(
+        image_batch_size=args.image_batch_size,
+        max_new_tokens=args.max_new_tokens,
+        num_beams=args.num_beams,
+        num_return_sequences=args.num_return_sequences,
+        length_penalty=args.length_penalty,
+        early_stopping=args.early_stopping,
+    )
+
+
 def _run_single_image(args: argparse.Namespace) -> None:
+    inference_config = _inference_config_from_args(args)
     device = _select_device(args.device)
     checkpoints = resolve_fixed_epoch_checkpoints(
         args.checkpoint_root,
@@ -128,11 +167,11 @@ def _run_single_image(args: argparse.Namespace) -> None:
             model,
             tokenizer,
             device,
-            max_new_tokens=args.max_new_tokens,
-            num_beams=args.num_beams,
-            num_return_sequences=args.num_return_sequences,
-            length_penalty=args.length_penalty,
-            early_stopping=not args.no_early_stopping,
+            max_new_tokens=inference_config.max_new_tokens,
+            num_beams=inference_config.num_beams,
+            num_return_sequences=inference_config.num_return_sequences,
+            length_penalty=inference_config.length_penalty,
+            early_stopping=inference_config.early_stopping,
         )
         print(
             json.dumps(
@@ -153,6 +192,7 @@ def _run_single_image(args: argparse.Namespace) -> None:
 
 
 def _run_manifest(args: argparse.Namespace) -> None:
+    inference_config = _inference_config_from_args(args)
     if args.image_dir is None and args.feature_cache is None:
         raise ValueError("--manifest requires --image-dir or an existing --feature-cache")
     device = _select_device(args.device)
@@ -176,7 +216,7 @@ def _run_manifest(args: argparse.Namespace) -> None:
             processor,
             encoder,
             device,
-            batch_size=args.image_batch_size,
+            batch_size=inference_config.image_batch_size,
         )
         if args.feature_cache is not None:
             save_feature_cache(features, args.feature_cache)
@@ -193,11 +233,7 @@ def _run_manifest(args: argparse.Namespace) -> None:
         "checkpoint": FINAL_CHECKPOINT_NAME,
         "training_policy": CLIPCAP_FIXED_EPOCH_POLICY,
         "prompt": None,
-        "max_new_tokens": args.max_new_tokens,
-        "num_beams": args.num_beams,
-        "num_return_sequences": args.num_return_sequences,
-        "length_penalty": args.length_penalty,
-        "early_stopping": not args.no_early_stopping,
+        **inference_config.to_dict(),
         "num_images": len(items),
         "clip_model": CLIP_MODEL_NAME,
         "gpt2_model": gpt2_model_name,
@@ -217,11 +253,11 @@ def _run_manifest(args: argparse.Namespace) -> None:
         tokenizer,
         device,
         args.output_dir,
-        max_new_tokens=args.max_new_tokens,
-        num_beams=args.num_beams,
-        num_return_sequences=args.num_return_sequences,
-        length_penalty=args.length_penalty,
-        early_stopping=not args.no_early_stopping,
+        max_new_tokens=inference_config.max_new_tokens,
+        num_beams=inference_config.num_beams,
+        num_return_sequences=inference_config.num_return_sequences,
+        length_penalty=inference_config.length_penalty,
+        early_stopping=inference_config.early_stopping,
         resume=not args.no_resume,
     )
     for subset_name, path in output_paths.items():

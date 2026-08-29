@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from math import isfinite
 from pathlib import Path
 from typing import Any
 
 from src.config.common_config import (
+    CLIP_MODEL_NAME,
     DATA_ROOT,
     PROJECT_ROOT,
     SEED,
@@ -18,10 +20,17 @@ TOKENIZED_DIR = DATA_ROOT / "tokenized"
 CLIPCAP_OUTPUT_ROOT = PROJECT_ROOT / "outputs" / "clipcap"
 
 # Pretrained models and preprocessing
-CLIP_MODEL_NAME = "openai/clip-vit-base-patch32"
 CLIP_BATCH_SIZE = 32
 GPT2_MODEL_NAME = "openai-community/gpt2"
 GPT2_MAX_LENGTH = 48
+
+# Inference and decoding
+CLIPCAP_INFERENCE_IMAGE_BATCH_SIZE = 16
+CLIPCAP_INFERENCE_MAX_NEW_TOKENS = 15
+CLIPCAP_INFERENCE_NUM_BEAMS = 5
+CLIPCAP_INFERENCE_NUM_RETURN_SEQUENCES = 5
+CLIPCAP_INFERENCE_LENGTH_PENALTY = 1.0
+CLIPCAP_INFERENCE_EARLY_STOPPING = True
 
 # Mapper architecture
 CLIPCAP_MAPPER_CLIP_LENGTH = 10
@@ -55,6 +64,48 @@ CLIPCAP_TRAINING_POLICIES = (
     CLIPCAP_FIXED_EPOCH_POLICY,
 )
 CLIPCAP_FIXED_EPOCHS = 7
+
+
+@dataclass(frozen=True)
+class ClipCapInferenceConfig:
+    """Validated defaults for one ClipCap caption-generation run."""
+
+    image_batch_size: int = CLIPCAP_INFERENCE_IMAGE_BATCH_SIZE
+    max_new_tokens: int = CLIPCAP_INFERENCE_MAX_NEW_TOKENS
+    num_beams: int = CLIPCAP_INFERENCE_NUM_BEAMS
+    num_return_sequences: int = CLIPCAP_INFERENCE_NUM_RETURN_SEQUENCES
+    length_penalty: float = CLIPCAP_INFERENCE_LENGTH_PENALTY
+    early_stopping: bool = CLIPCAP_INFERENCE_EARLY_STOPPING
+
+    def __post_init__(self) -> None:
+        positive_integers = {
+            "image_batch_size": self.image_batch_size,
+            "max_new_tokens": self.max_new_tokens,
+            "num_beams": self.num_beams,
+            "num_return_sequences": self.num_return_sequences,
+        }
+        for name, value in positive_integers.items():
+            if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+                raise ValueError(f"{name} must be a positive integer")
+        if self.num_beams < 2:
+            raise ValueError("num_beams must be greater than one")
+        if self.num_return_sequences > self.num_beams:
+            raise ValueError("num_return_sequences cannot exceed num_beams")
+        if (
+            isinstance(self.length_penalty, bool)
+            or not isinstance(self.length_penalty, (int, float))
+            or not isfinite(self.length_penalty)
+            or self.length_penalty <= 0
+        ):
+            raise ValueError("length_penalty must be a positive number")
+        if not isinstance(self.early_stopping, bool):
+            raise ValueError("early_stopping must be a boolean")
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+CLIPCAP_DEFAULT_INFERENCE_CONFIG = ClipCapInferenceConfig()
 
 
 @dataclass(frozen=True)

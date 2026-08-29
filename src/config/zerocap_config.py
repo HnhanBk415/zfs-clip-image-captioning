@@ -1,7 +1,6 @@
-from src.config.common_config import PROJECT_ROOT
+from src.config.common_config import CLIP_MODEL_NAME, PROJECT_ROOT
 
 
-CLIP_MODEL_NAME = "openai/clip-vit-base-patch32"
 GPT2_MODEL_NAME = "openai-community/gpt2"
 
 PROMPT = "Image of a"

@@ -15,6 +15,8 @@ RAW_CAPTIONS_FILE = RAW_DIR / "captions.txt"
 
 KAGGLE_DATASET_HANDLE = "adityajn105/flickr8k"
 
+CLIP_MODEL_NAME = "openai/clip-vit-base-patch32"
+
 TRAIN_SUBSET_RATIOS = [0.01, 0.05, 0.10, 0.25, 1.00]
 
 SUBSET_NAMES = [
