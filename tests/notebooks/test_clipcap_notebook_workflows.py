@@ -18,6 +18,11 @@ END_TO_END_NOTEBOOK = (
     / "inference"
     / "clipcap_validation_end_to_end_colab.ipynb"
 )
+FIXED_TEST_END_TO_END_NOTEBOOK = (
+    CLIPCAP_NOTEBOOK_DIRECTORY
+    / "inference"
+    / "clipcap_fixed_test_end_to_end_colab.ipynb"
+)
 FINAL_TEST_MANIFEST = Path("data/flickr8k/splits/fixed_test_round_001.json")
 VALIDATION_CHUNK_DIRECTORY = Path("data/flickr8k/splits/val_chunks")
 
@@ -37,7 +42,12 @@ def _code_source(path: Path) -> str:
 
 @pytest.mark.parametrize(
     "path",
-    [GENERATION_NOTEBOOK, EVALUATION_NOTEBOOK, END_TO_END_NOTEBOOK],
+    [
+        GENERATION_NOTEBOOK,
+        EVALUATION_NOTEBOOK,
+        END_TO_END_NOTEBOOK,
+        FIXED_TEST_END_TO_END_NOTEBOOK,
+    ],
 )
 def test_notebook_code_cells_compile_and_are_clean(path: Path):
     notebook = _load_notebook(path)
@@ -93,7 +103,9 @@ def test_evaluation_notebook_consumes_predictions_and_writes_metrics():
     assert "predictions.jsonl" in source
     assert "evaluate_coco_metrics" in source
     assert "evaluate_clipscore_from_cache" in source
-    assert "load_feature_cache" in source
+    assert "from src.common.caption_metrics import evaluate_clipscore_from_cache" in source
+    assert "RefCLIPScore" in source
+    assert "A photo depicts" in source
     assert "summary.json" in source
     assert "per_image_scores.csv" in source
     assert "subprocess.run(inference_command" not in source
@@ -126,6 +138,43 @@ def test_colab_notebook_runs_validation_end_to_end_for_all_subsets():
     assert "clipcap_caption_generation.ipynb" in source
     assert "clipcap_evaluation.ipynb" in source
     assert "summary.json" in source
+
+
+def test_colab_notebook_runs_fixed_test_and_exports_report_artifacts():
+    source = _code_source(FIXED_TEST_END_TO_END_NOTEBOOK)
+
+    assert "google.colab" in source
+    assert "https://github.com/HnhanBk415/zfs-clip-image-captioning.git" in source
+    assert "BRANCH = 'refactor/huuthien/evaluation'" in source
+    assert "PROJECT_ROOT = Path('/content/zfs-clip-image-captioning')" in source
+    assert "DATA_CACHE_PATH" not in source
+    assert "data_cache' / 'features' / 'clip_features.pt" in source
+    assert "DRIVE_ROOT / 'experiments_fixed_epoch'" in source
+    assert "fixed_test_round_001.json" in source
+    assert "REFERENCES_PATH = SPLIT_DIR / 'test.json'" in source
+    assert "len(fixed_test_ids) != 104" in source
+    assert "EXPECTED_SUBSETS" in source
+    for subset_name in (
+        "train_1pct",
+        "train_5pct",
+        "train_10pct",
+        "train_25pct",
+        "train_100pct",
+    ):
+        assert subset_name in source
+    assert "validate_artifact_directory" in source
+    assert "load_feature_cache" in source
+    assert "src.clipcap.inference.run_inference" in source
+    assert "'--allow-test'" in source
+    assert "'--no-resume'" not in source
+    assert "src.common.caption_metrics" in source
+    assert "captions.json" in source
+    assert "metrics.json" in source
+    assert "comparison.json" in source
+    assert "per_image_comparison.csv" in source
+    assert "results_table.csv" in source
+    assert "RefCLIPScore" in source
+    assert "shutil.make_archive" in source
 
 
 def test_final_test_round_is_a_clean_subset_of_canonical_test():
