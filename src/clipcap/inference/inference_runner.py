@@ -11,6 +11,7 @@ from torch import Tensor
 from transformers import CLIPModel, CLIPProcessor, GPT2LMHeadModel
 
 from src.clipcap.models.clipcap_model import ClipCaptionModel
+from src.config.clipcap_config import CLIPCAP_DEFAULT_INFERENCE_CONFIG
 
 from .checkpoints import FINAL_CHECKPOINT_NAME, build_mapper_from_checkpoint
 from .decoding import generate_caption_from_feature
@@ -78,7 +79,6 @@ def generation_result_to_record(
 ) -> dict[str, Any]:
     return {
         "image_id": item.image_id,
-        "references": list(item.references),
         "subset_name": subset_name,
         "seed": seed,
         "checkpoint": FINAL_CHECKPOINT_NAME,
@@ -98,11 +98,13 @@ def run_evaluation(
     tokenizer: Any,
     device: torch.device,
     output_dir: str | Path,
-    max_new_tokens: int = 15,
-    num_beams: int = 5,
-    num_return_sequences: int = 5,
-    length_penalty: float = 1.0,
-    early_stopping: bool = True,
+    max_new_tokens: int = CLIPCAP_DEFAULT_INFERENCE_CONFIG.max_new_tokens,
+    num_beams: int = CLIPCAP_DEFAULT_INFERENCE_CONFIG.num_beams,
+    num_return_sequences: int = (
+        CLIPCAP_DEFAULT_INFERENCE_CONFIG.num_return_sequences
+    ),
+    length_penalty: float = CLIPCAP_DEFAULT_INFERENCE_CONFIG.length_penalty,
+    early_stopping: bool = CLIPCAP_DEFAULT_INFERENCE_CONFIG.early_stopping,
     resume: bool = True,
 ) -> dict[str, Path]:
     selected_output_dir = Path(output_dir)

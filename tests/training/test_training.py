@@ -1,3 +1,5 @@
+"""Tests for ClipCap training behavior."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -16,6 +18,7 @@ from src.clipcap.training.trainer import (
     train_one_epoch,
 )
 from src.config.clipcap_config import (
+    CLIPCAP_CHECKPOINT_ROOT,
     CLIPCAP_FIXED_EPOCH_POLICY,
     CLIPCAP_FIXED_EPOCHS,
     ClipCapTrainingConfig,
@@ -220,6 +223,11 @@ def test_fixed_epoch_config_uses_central_policy_and_epoch_count(tmp_path: Path):
     assert config.training_policy == CLIPCAP_FIXED_EPOCH_POLICY
     assert config.max_epochs == CLIPCAP_FIXED_EPOCHS == 7
     assert config.output_root == tmp_path
+
+
+def test_training_defaults_to_dedicated_checkpoint_root():
+    assert ClipCapTrainingConfig().output_root == CLIPCAP_CHECKPOINT_ROOT
+    assert create_clipcap_fixed_epoch_config().output_root == CLIPCAP_CHECKPOINT_ROOT
 
 
 def test_legacy_config_defaults_to_early_stopping_policy(tmp_path: Path):

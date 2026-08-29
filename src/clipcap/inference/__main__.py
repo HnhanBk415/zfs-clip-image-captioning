@@ -1,4 +1,4 @@
-from .cli import main
+from .run_inference import main
 
 
 if __name__ == "__main__":

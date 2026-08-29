@@ -4,7 +4,7 @@ from .decoding import (
     clip_rerank_candidates,
     generate_caption_from_feature,
 )
-from .evaluation import run_evaluation
+from .inference_runner import run_evaluation
 from .features import load_evaluation_manifest
 from .records import BeamCandidate, FixedEpochCheckpoint, GenerationResult
 

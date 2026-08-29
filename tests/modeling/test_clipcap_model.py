@@ -1,3 +1,5 @@
+"""Tests for the integrated ClipCap model."""
+
 import pytest
 import torch
 from transformers import GPT2Config, GPT2LMHeadModel

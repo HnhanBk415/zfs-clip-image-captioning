@@ -1,3 +1,5 @@
+"""Tests for the preprocessing pipeline."""
+
 import torch
 import pytest
 from transformers import AutoConfig

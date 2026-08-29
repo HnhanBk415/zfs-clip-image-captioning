@@ -14,7 +14,7 @@ from .decoding import (
     compute_clip_similarity_scores,
     generate_caption_from_feature,
 )
-from .evaluation import prepare_run_config, run_evaluation
+from .inference_runner import prepare_run_config, run_evaluation
 from .features import (
     encode_evaluation_images,
     encode_image_with_clip,

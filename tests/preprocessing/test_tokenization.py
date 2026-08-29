@@ -1,3 +1,5 @@
+"""Tests for caption tokenization."""
+
 import torch
 import pytest
 
