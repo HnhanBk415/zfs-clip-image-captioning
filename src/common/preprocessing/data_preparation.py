@@ -2,12 +2,6 @@
 # -*- coding: utf-8 -*-
 
 """
-Flickr8k Dataset Preparation Pipeline
-
-Responsibilities
-----------------
-1. Download/load Flickr8k from KaggleHub.
-2. Audit raw image/caption integrity.
 3. Normalize and validate captions.
 4. Enforce exactly 5 valid captions per image.
 5. Split by IMAGE into train/val/test.
@@ -17,10 +11,38 @@ Responsibilities
 9. Verify dataset invariants.
 
 EDA/visualization intentionally remains in the notebook:
-    notebook/flickr8k_exploration.ipynb
-"""
+    notebook/flickr8k_exploration.ipynbFlickr8k Dataset Preparation Pipeline
 
-from config import *
+Responsibilities
+----------------
+1. Download/load Flickr8k from KaggleHub.
+2. Audit raw image/caption integrity.
+
+"""
+import json
+import random
+import re
+import string
+import unicodedata
+from pathlib import Path
+
+import kagglehub
+import pandas as pd
+from PIL import Image
+from tqdm import tqdm
+from src.config.common_config import (
+    KAGGLE_DATASET_HANDLE,
+    METADATA_DIR,
+    SEED,
+    SPLIT_DIR,
+    SUBSET_DIR,
+    SUBSET_NAMES,
+    TEST_RATIO,
+    TRAIN_RATIO,
+    TRAIN_SUBSET_RATIOS,
+    VAL_RATIO,
+    setup_common_directories,
+)
 
 # Data-policy parameters belong here rather than being hidden in runtime logic.
 STRICT_CAPTIONS_PER_IMAGE = 5
@@ -479,7 +501,7 @@ def validate_final_invariants(valid_data, split_data):
 # ============================================================
 
 def main():
-    setup_directories()
+    setup_common_directories
 
     print("=" * 60)
     print("FLICKR8K DATASET PREPARATION PIPELINE")

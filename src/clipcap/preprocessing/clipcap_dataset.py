@@ -1,6 +1,9 @@
 import torch
 from torch.utils.data import Dataset, DataLoader
-from config import TOKENIZED_DIR, FEATURE_DIR
+from src.config.clipcap_config import (
+    FEATURE_DIR,
+    TOKENIZED_DIR,
+)
 
 class ClipCapDataset(Dataset):
     def __init__(self, tokenized_path, clip_feature_data):
