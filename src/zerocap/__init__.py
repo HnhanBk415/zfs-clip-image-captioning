@@ -2,16 +2,16 @@
 
 from src.config.zerocap_config import ZeroCapRunConfig, seed_everything
 
-from .captioner import ZeroCapCaptioner
-from .clip_guidance import CLIPGuidance
-from .context_optimizer import ContextOptimizer
-from .data import Flickr8kData, deterministic_sample
-from .decoding import ZeroCapDecoder
-from .generator import ZeroCapGenerator
-from .image_encoder import ImageEncoder
-from .model_loader import ZeroCapModels
-from .storage import PredictionStore
-from .types import GenerationResult
+from .core.captioner import ZeroCapCaptioner
+from .core.types import GenerationResult
+from .generation.context_optimizer import ContextOptimizer
+from .generation.decoding import ZeroCapDecoder
+from .generation.generator import ZeroCapGenerator
+from .models.clip_guidance import CLIPGuidance
+from .models.image_encoder import ImageEncoder
+from .models.model_loader import ZeroCapModels
+from .runtime.data import Flickr8kData, deterministic_sample
+from .runtime.storage import PredictionStore
 
 __all__ = [
     "CLIPGuidance",

@@ -5,7 +5,7 @@ import math
 import numpy as np
 import torch
 
-from .types import (
+from ..core.types import (
     ContextStepResult,
     assert_model_parameter_grads_clear,
     assert_probability_distribution,

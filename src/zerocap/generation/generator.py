@@ -4,7 +4,7 @@ import math
 
 import torch
 
-from .types import (
+from ..core.types import (
     BeamState,
     assert_probability_distribution,
     clone_context_delta,

@@ -4,7 +4,7 @@ import math
 
 import torch
 
-from .types import (
+from ..core.types import (
     assert_probability_distribution,
     postprocess_caption,
     probability_diagnostics,

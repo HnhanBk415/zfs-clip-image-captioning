@@ -20,22 +20,58 @@ MIGRATED_CLASSES = {
         8,
         PROJECT_ROOT / "src" / "config" / "zerocap_config.py",
     ),
-    "GenerationResult": (12, PROJECT_ROOT / "src" / "zerocap" / "types.py"),
-    "ContextStepResult": (12, PROJECT_ROOT / "src" / "zerocap" / "types.py"),
-    "BeamState": (12, PROJECT_ROOT / "src" / "zerocap" / "types.py"),
-    "GenerationTrace": (12, PROJECT_ROOT / "src" / "zerocap" / "types.py"),
-    "Flickr8kData": (10, PROJECT_ROOT / "src" / "zerocap" / "data.py"),
-    "PredictionStore": (14, PROJECT_ROOT / "src" / "zerocap" / "storage.py"),
-    "ZeroCapModels": (16, PROJECT_ROOT / "src" / "zerocap" / "model_loader.py"),
-    "ImageEncoder": (18, PROJECT_ROOT / "src" / "zerocap" / "image_encoder.py"),
-    "CLIPGuidance": (20, PROJECT_ROOT / "src" / "zerocap" / "clip_guidance.py"),
+    "GenerationResult": (
+        12,
+        PROJECT_ROOT / "src" / "zerocap" / "core" / "types.py",
+    ),
+    "ContextStepResult": (
+        12,
+        PROJECT_ROOT / "src" / "zerocap" / "core" / "types.py",
+    ),
+    "BeamState": (
+        12,
+        PROJECT_ROOT / "src" / "zerocap" / "core" / "types.py",
+    ),
+    "GenerationTrace": (
+        12,
+        PROJECT_ROOT / "src" / "zerocap" / "core" / "types.py",
+    ),
+    "Flickr8kData": (
+        10,
+        PROJECT_ROOT / "src" / "zerocap" / "runtime" / "data.py",
+    ),
+    "PredictionStore": (
+        14,
+        PROJECT_ROOT / "src" / "zerocap" / "runtime" / "storage.py",
+    ),
+    "ZeroCapModels": (
+        16,
+        PROJECT_ROOT / "src" / "zerocap" / "models" / "model_loader.py",
+    ),
+    "ImageEncoder": (
+        18,
+        PROJECT_ROOT / "src" / "zerocap" / "models" / "image_encoder.py",
+    ),
+    "CLIPGuidance": (
+        20,
+        PROJECT_ROOT / "src" / "zerocap" / "models" / "clip_guidance.py",
+    ),
     "ContextOptimizer": (
         22,
-        PROJECT_ROOT / "src" / "zerocap" / "context_optimizer.py",
+        PROJECT_ROOT / "src" / "zerocap" / "generation" / "context_optimizer.py",
     ),
-    "ZeroCapDecoder": (24, PROJECT_ROOT / "src" / "zerocap" / "decoding.py"),
-    "ZeroCapGenerator": (26, PROJECT_ROOT / "src" / "zerocap" / "generator.py"),
-    "ZeroCapCaptioner": (28, PROJECT_ROOT / "src" / "zerocap" / "captioner.py"),
+    "ZeroCapDecoder": (
+        24,
+        PROJECT_ROOT / "src" / "zerocap" / "generation" / "decoding.py",
+    ),
+    "ZeroCapGenerator": (
+        26,
+        PROJECT_ROOT / "src" / "zerocap" / "generation" / "generator.py",
+    ),
+    "ZeroCapCaptioner": (
+        28,
+        PROJECT_ROOT / "src" / "zerocap" / "core" / "captioner.py",
+    ),
 }
 
 MIGRATED_MODULES = sorted(
@@ -44,8 +80,8 @@ MIGRATED_MODULES = sorted(
         for _, module_path in MIGRATED_CLASSES.values()
     }
     | {
-        PROJECT_ROOT / "src" / "zerocap" / "data.py",
-        PROJECT_ROOT / "src" / "zerocap" / "experiment.py",
+        PROJECT_ROOT / "src" / "zerocap" / "runtime" / "data.py",
+        PROJECT_ROOT / "src" / "zerocap" / "runtime" / "experiment.py",
         PROJECT_ROOT / "scripts" / "run_zerocap.py",
     }
 )

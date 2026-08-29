@@ -23,7 +23,7 @@ import transformers
 
 from src.config.zerocap_config import ZeroCapRunConfig, seed_everything
 
-from .captioner import ZeroCapCaptioner
+from ..core.captioner import ZeroCapCaptioner
 from .data import Flickr8kData, deterministic_sample
 from .storage import PredictionStore
 

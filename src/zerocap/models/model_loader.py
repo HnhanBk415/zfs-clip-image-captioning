@@ -9,7 +9,7 @@ import numpy as np
 import torch
 from transformers import CLIPModel, CLIPProcessor, GPT2LMHeadModel, GPT2TokenizerFast
 
-from .storage import PredictionStore
+from ..runtime.storage import PredictionStore
 
 
 class ZeroCapModels:

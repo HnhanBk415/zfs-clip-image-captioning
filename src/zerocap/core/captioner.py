@@ -5,12 +5,12 @@ import time
 
 import torch
 
-from .clip_guidance import CLIPGuidance
-from .context_optimizer import ContextOptimizer
-from .decoding import ZeroCapDecoder
-from .generator import ZeroCapGenerator
-from .image_encoder import ImageEncoder
-from .model_loader import ZeroCapModels
+from ..generation.context_optimizer import ContextOptimizer
+from ..generation.decoding import ZeroCapDecoder
+from ..generation.generator import ZeroCapGenerator
+from ..models.clip_guidance import CLIPGuidance
+from ..models.image_encoder import ImageEncoder
+from ..models.model_loader import ZeroCapModels
 from .types import (
     GenerationResult,
     GenerationTrace,
