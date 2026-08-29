@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import csv
 import json
+import sys
+import types
 from pathlib import Path
 
 import pytest
+import torch
 
 import src.common.caption_metrics as caption_metrics
 
@@ -70,6 +73,120 @@ def test_prediction_coverage_rejects_missing_or_extra_images():
         )
 
 
+def test_coco_metrics_constructs_ptb_tokenizer_without_arguments(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    class FakeTokenizer:
+        def __init__(self):
+            pass
+
+        def tokenize(self, captions):
+            return captions
+
+    class FakeBleu:
+        def __init__(self, order):
+            assert order == 4
+
+        def compute_score(self, ground_truth, results, verbose):
+            del ground_truth, results
+            assert verbose == 0
+            return [0.1, 0.2, 0.3, 0.4], [[0.1], [0.2], [0.3], [0.4]]
+
+    class FakeCider:
+        def compute_score(self, ground_truth, results):
+            del ground_truth, results
+            return 0.5, [0.5]
+
+    module_names = [
+        "pycocoevalcap",
+        "pycocoevalcap.bleu",
+        "pycocoevalcap.bleu.bleu",
+        "pycocoevalcap.cider",
+        "pycocoevalcap.cider.cider",
+        "pycocoevalcap.tokenizer",
+        "pycocoevalcap.tokenizer.ptbtokenizer",
+    ]
+    modules = {name: types.ModuleType(name) for name in module_names}
+    modules["pycocoevalcap.bleu.bleu"].Bleu = FakeBleu
+    modules["pycocoevalcap.cider.cider"].Cider = FakeCider
+    modules["pycocoevalcap.tokenizer.ptbtokenizer"].PTBTokenizer = FakeTokenizer
+    for name, module in modules.items():
+        monkeypatch.setitem(sys.modules, name, module)
+    monkeypatch.setattr(caption_metrics.shutil, "which", lambda command: "java")
+
+    result = caption_metrics.evaluate_coco_metrics(
+        {"image.jpg": ["reference"]},
+        {"image.jpg": "prediction"},
+    )
+
+    assert result["CIDEr"] == pytest.approx(50.0)
+    assert result["BLEU-4"] == pytest.approx(40.0)
+
+
+def test_clipscore_uses_published_prefix_weight_and_refclipscore(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    observed_texts: list[str] = []
+
+    class FakeProcessor:
+        @classmethod
+        def from_pretrained(cls, model_name):
+            assert model_name == "openai/clip-vit-base-patch32"
+            return cls()
+
+        def __call__(self, *, text, **kwargs):
+            del kwargs
+            observed_texts.extend(text)
+            batch_size = len(text)
+            return {
+                "input_ids": torch.ones((batch_size, 1), dtype=torch.long),
+                "attention_mask": torch.ones((batch_size, 1), dtype=torch.long),
+            }
+
+    class FakeModel:
+        @classmethod
+        def from_pretrained(cls, model_name):
+            assert model_name == "openai/clip-vit-base-patch32"
+            return cls()
+
+        def to(self, device):
+            del device
+            return self
+
+        def eval(self):
+            return self
+
+        def parameters(self):
+            return ()
+
+        def get_text_features(self, input_ids, attention_mask):
+            del attention_mask
+            return torch.tensor([[0.6, 0.8]]).repeat(input_ids.size(0), 1)
+
+    monkeypatch.setattr(
+        caption_metrics,
+        "_load_feature_cache",
+        lambda *args, **kwargs: {"image.jpg": torch.tensor([1.0, 0.0])},
+    )
+    monkeypatch.setattr(caption_metrics, "CLIPProcessor", FakeProcessor)
+    monkeypatch.setattr(caption_metrics, "CLIPModel", FakeModel)
+
+    result = caption_metrics.evaluate_clipscore_from_cache(
+        ["image.jpg"],
+        {"image.jpg": ["a dog running"] * 5},
+        {"clipcap": {"image.jpg": "a dog running"}},
+        "unused.pt",
+        device_name="cpu",
+    )
+
+    assert observed_texts == ["A photo depicts a dog running"] * 6
+    assert result["clipcap"]["CLIPScore"] == pytest.approx(1.5)
+    assert result["clipcap"]["RefCLIPScore"] == pytest.approx(1.2)
+    assert result["clipcap"]["per_image"]["image.jpg"] == pytest.approx(
+        {"CLIPScore": 1.5, "RefCLIPScore": 1.2}
+    )
+
+
 def test_run_caption_evaluation_writes_common_artifacts(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -127,6 +244,7 @@ def test_run_caption_evaluation_writes_common_artifacts(
 
     def fake_clipscore(
         selected_ids,
+        references,
         predictions_by_experiment,
         feature_cache_path,
         model_name,
@@ -135,10 +253,15 @@ def test_run_caption_evaluation_writes_common_artifacts(
     ):
         del feature_cache_path, model_name, batch_size, device_name
         assert selected_ids == image_ids
+        assert set(references) == set(image_ids)
         return {
             label: {
                 "CLIPScore": 30.0,
-                "per_image": {image_id: 30.0 for image_id in image_ids},
+                "RefCLIPScore": 31.0,
+                "per_image": {
+                    image_id: {"CLIPScore": 30.0, "RefCLIPScore": 31.0}
+                    for image_id in image_ids
+                },
             }
             for label in predictions_by_experiment
         }
@@ -190,4 +313,8 @@ def test_run_caption_evaluation_writes_common_artifacts(
     assert summary["results"][0]["CIDEr"] == 50.0
     assert summary["results"][0]["BLEU-4"] == 25.0
     assert summary["results"][0]["CLIPScore"] == 30.0
+    assert summary["results"][0]["RefCLIPScore"] == 31.0
+    assert summary["supplementary_metrics"] == ["CLIPScore", "RefCLIPScore"]
+    assert clipcap_metrics["metrics"]["RefCLIPScore"] == 31.0
+    assert per_image_rows[0]["RefCLIPScore"] == "31.0"
     assert len(per_image_rows) == 4
