@@ -169,10 +169,20 @@ def test_colab_notebook_runs_fixed_test_and_exports_report_artifacts():
     assert "'--no-resume'" not in source
     assert "src.common.caption_metrics" in source
     assert "captions.json" in source
-    assert "metrics.json" in source
+    assert "results_by_experiment" in source
+    assert "report_metric_artifact" in source
+    assert "REPORT_METRICS_DIR / f'{subset_name}.json'" in source
+    assert "prediction_paths[subset_name].parent / 'metrics.json'" not in source
     assert "comparison.json" in source
     assert "per_image_comparison.csv" in source
     assert "results_table.csv" in source
+    assert "'train_1pct': 1" in source
+    assert "'train_5pct': 5" in source
+    assert "'train_10pct': 10" in source
+    assert "'train_25pct': 25" in source
+    assert "'train_100pct': 100" in source
+    assert "results_table['training_data_pct']" in source
+    assert "sort_values(\n    'training_data_pct'" in source
     assert "RefCLIPScore" in source
     assert "shutil.make_archive" in source
 
