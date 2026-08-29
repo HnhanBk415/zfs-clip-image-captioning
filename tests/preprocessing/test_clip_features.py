@@ -1,3 +1,5 @@
+"""Tests for CLIP feature preprocessing."""
+
 import importlib
 import json
 import sys

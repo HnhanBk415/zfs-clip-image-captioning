@@ -1,9 +1,11 @@
+"""Tests for notebook configuration consistency."""
+
 import json
 import re
 from pathlib import Path
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 LEGACY_CONFIG_IMPORT = re.compile(
     r"(?m)^\s*(?:from\s+config\s+import|import\s+config(?:\s|$))"
 )
@@ -20,7 +22,7 @@ def _notebook_source(relative_path: str) -> str:
 
 def test_colab_training_uses_central_clipcap_configuration():
     source = _notebook_source(
-        "notebook/clipcap/clipcap_training_colab.ipynb"
+        "notebook/clipcap/training/clipcap_training_colab.ipynb"
     )
 
     assert "clipcap_training_config" not in source
@@ -54,9 +56,9 @@ def test_colab_training_uses_central_clipcap_configuration():
 def test_production_notebooks_do_not_copy_clipcap_hyperparameters():
     notebook_paths = (
         "notebook/preprocessing/clipcap_and_loader.ipynb",
-        "notebook/mapping_network/clip_projection.ipynb",
-        "notebook/mapping_network/prefix_encoder.ipynb",
-        "notebook/mapping_network/Transformer_Mapper.ipynb",
+        "notebook/clipcap/modeling/mapping_network/clip_projection.ipynb",
+        "notebook/clipcap/modeling/mapping_network/prefix_encoder.ipynb",
+        "notebook/clipcap/modeling/mapping_network/transformer_mapper.ipynb",
     )
     copied_assignment = re.compile(
         r"(?:batch_size|clip_length|prefix_length|num_layers|num_heads|nhead)"

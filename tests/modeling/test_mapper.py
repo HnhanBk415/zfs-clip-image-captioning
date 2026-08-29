@@ -1,3 +1,5 @@
+"""Tests for ClipCap mapping networks."""
+
 import pytest
 import torch
 
