@@ -224,5 +224,10 @@ data/flickr8k/raw/
 data/flickr8k/features/
 data/flickr8k/tokenized/
 
+# Checkpoints used for demo
+*.pt
+notebook/demo/checkpoints/
+demo/checkpoints/
+
 # Training artifacts
 outputs/
