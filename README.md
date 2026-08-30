@@ -27,6 +27,7 @@ This project investigates two different approaches for bridging visual represent
 
 ## 📚 Dataset
 🔗 Dataset: [Flickr8k on Kaggle](https://www.kaggle.com/datasets/adityajn105/flickr8k)
+
 The project uses the **Flickr8k** dataset.
 
 Each image is associated with **five human-written reference captions**.  
