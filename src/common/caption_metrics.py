@@ -18,6 +18,10 @@ from transformers import CLIPModel, CLIPProcessor
 from src.config.common_config import CLIP_MODEL_NAME
 
 
+CLIPSCORE_TEXT_PREFIX = "A photo depicts"
+CLIPSCORE_WEIGHT = 2.5
+
+
 @dataclass(frozen=True)
 class CaptionMetricArtifacts:
     summary_path: Path
@@ -201,7 +205,7 @@ def evaluate_coco_metrics(
         image_id: [{"caption": predictions[image_id]}]
         for image_id in image_ids
     }
-    tokenizer = PTBTokenizer(verbose=False)
+    tokenizer = PTBTokenizer()
     ground_truth = tokenizer.tokenize(raw_ground_truth)
     results = tokenizer.tokenize(raw_results)
     bleu_score, bleu_per_image = Bleu(4).compute_score(
@@ -267,6 +271,7 @@ def _select_device(device_name: str) -> torch.device:
 
 def evaluate_clipscore_from_cache(
     image_ids: Sequence[str],
+    references: Mapping[str, Sequence[str]],
     predictions_by_experiment: Mapping[str, Mapping[str, str]],
     feature_cache_path: str | Path,
     model_name: str = CLIP_MODEL_NAME,
@@ -283,36 +288,91 @@ def evaluate_clipscore_from_cache(
     for parameter in model.parameters():
         parameter.requires_grad = False
 
+    def encode_texts(texts: Sequence[str]) -> Tensor:
+        encoded_batches: list[Tensor] = []
+        for start in range(0, len(texts), batch_size):
+            prompted_texts = [
+                f"{CLIPSCORE_TEXT_PREFIX} {text}"
+                for text in texts[start : start + batch_size]
+            ]
+            text_inputs = processor(
+                text=prompted_texts,
+                padding=True,
+                truncation=True,
+                return_tensors="pt",
+            )
+            text_features = _unwrap_features(
+                model.get_text_features(
+                    input_ids=text_inputs["input_ids"].to(device),
+                    attention_mask=text_inputs["attention_mask"].to(device),
+                )
+            )
+            encoded_batches.append(
+                functional.normalize(text_features.float(), dim=-1).cpu()
+            )
+        return torch.cat(encoded_batches, dim=0)
+
     results: dict[str, dict[str, Any]] = {}
     with torch.inference_mode():
+        flattened_references = [
+            reference
+            for image_id in image_ids
+            for reference in references[image_id]
+        ]
+        encoded_references = encode_texts(flattened_references)
+        reference_features: dict[str, Tensor] = {}
+        offset = 0
+        for image_id in image_ids:
+            next_offset = offset + len(references[image_id])
+            reference_features[image_id] = encoded_references[offset:next_offset]
+            offset = next_offset
+
         for label, predictions in predictions_by_experiment.items():
-            per_image_scores: dict[str, float] = {}
+            per_image_scores: dict[str, dict[str, float]] = {}
             for start in range(0, len(image_ids), batch_size):
                 batch_ids = image_ids[start : start + batch_size]
                 captions = [predictions[image_id] for image_id in batch_ids]
-                text_inputs = processor(
-                    text=captions,
-                    padding=True,
-                    truncation=True,
-                    return_tensors="pt",
-                )
-                text_features = _unwrap_features(
-                    model.get_text_features(
-                        input_ids=text_inputs["input_ids"].to(device),
-                        attention_mask=text_inputs["attention_mask"].to(device),
-                    )
-                )
-                text_features = functional.normalize(text_features.float(), dim=-1)
+                text_features = encode_texts(captions).to(device)
                 batch_image_features = image_features[
                     start : start + len(batch_ids)
                 ].to(device)
-                scores = (
-                    100.0 * (batch_image_features * text_features).sum(dim=-1)
+                clip_scores = (
+                    CLIPSCORE_WEIGHT
+                    * (batch_image_features * text_features).sum(dim=-1)
                 ).clamp(min=0.0)
-                for image_id, score in zip(batch_ids, scores.cpu().tolist()):
-                    per_image_scores[image_id] = float(score)
+                reference_scores = torch.stack(
+                    [
+                        (
+                            reference_features[image_id].to(device)
+                            @ text_feature
+                        ).max()
+                        for image_id, text_feature in zip(batch_ids, text_features)
+                    ]
+                ).clamp(min=0.0)
+                denominators = clip_scores + reference_scores
+                refclip_scores = torch.where(
+                    denominators > 0,
+                    2.0 * clip_scores * reference_scores / denominators,
+                    torch.zeros_like(denominators),
+                )
+                for image_id, clip_score, refclip_score in zip(
+                    batch_ids,
+                    clip_scores.cpu().tolist(),
+                    refclip_scores.cpu().tolist(),
+                ):
+                    per_image_scores[image_id] = {
+                        "CLIPScore": float(clip_score),
+                        "RefCLIPScore": float(refclip_score),
+                    }
             results[label] = {
-                "CLIPScore": sum(per_image_scores.values()) / len(per_image_scores),
+                "CLIPScore": sum(
+                    scores["CLIPScore"] for scores in per_image_scores.values()
+                )
+                / len(per_image_scores),
+                "RefCLIPScore": sum(
+                    scores["RefCLIPScore"] for scores in per_image_scores.values()
+                )
+                / len(per_image_scores),
                 "per_image": per_image_scores,
             }
 
@@ -420,6 +480,7 @@ def run_caption_evaluation(
     }
     clip_results = evaluate_clipscore_from_cache(
         image_ids,
+        references,
         predictions_by_experiment,
         feature_cache_path,
         clip_model_name,
@@ -438,6 +499,7 @@ def run_caption_evaluation(
                 "CIDEr": coco_results[label]["CIDEr"],
                 "BLEU-4": coco_results[label]["BLEU-4"],
                 "CLIPScore": clip_results[label]["CLIPScore"],
+                "RefCLIPScore": clip_results[label]["RefCLIPScore"],
             }
         )
         for image_id in sorted(references):
@@ -448,7 +510,12 @@ def run_caption_evaluation(
                     "prediction": predictions[image_id],
                     "CIDEr": coco_results[label]["per_image"][image_id]["CIDEr"],
                     "BLEU-4": coco_results[label]["per_image"][image_id]["BLEU-4"],
-                    "CLIPScore": clip_results[label]["per_image"][image_id],
+                    "CLIPScore": clip_results[label]["per_image"][image_id][
+                        "CLIPScore"
+                    ],
+                    "RefCLIPScore": clip_results[label]["per_image"][image_id][
+                        "RefCLIPScore"
+                    ],
                 }
             )
     summary_rows.sort(key=lambda row: (-row["CIDEr"], -row["BLEU-4"]))
@@ -462,7 +529,14 @@ def run_caption_evaluation(
     metric_scales = {
         "CIDEr": "raw CIDEr multiplied by 100; not a percentage",
         "BLEU-4": "corpus BLEU-4 multiplied by 100",
-        "CLIPScore": "max(100 * cosine_similarity, 0)",
+        "CLIPScore": (
+            "2.5 * max(cosine_similarity(image, "
+            "'A photo depicts ' + caption), 0)"
+        ),
+        "RefCLIPScore": (
+            "harmonic mean of CLIPScore and max non-negative cosine similarity "
+            "between candidate and references"
+        ),
     }
     inference_manifest_sha256 = sha256_file(inference_manifest)
     references_sha256 = sha256_file(reference_manifest)
@@ -484,6 +558,7 @@ def run_caption_evaluation(
                 "CIDEr": row["CIDEr"],
                 "BLEU-4": row["BLEU-4"],
                 "CLIPScore": row["CLIPScore"],
+                "RefCLIPScore": row["RefCLIPScore"],
             },
             "inference_manifest_path": str(inference_manifest.resolve()),
             "inference_manifest_sha256": inference_manifest_sha256,
@@ -500,7 +575,7 @@ def run_caption_evaluation(
     artifact: dict[str, Any] = {
         "generated_at_utc": generated_at_utc,
         "ranking_policy": ["CIDEr", "BLEU-4"],
-        "supplementary_metric": "CLIPScore",
+        "supplementary_metrics": ["CLIPScore", "RefCLIPScore"],
         "metric_scales": metric_scales,
         "inference_manifest_path": str(inference_manifest.resolve()),
         "inference_manifest_sha256": inference_manifest_sha256,
@@ -539,6 +614,7 @@ def run_caption_evaluation(
                 "CIDEr",
                 "BLEU-4",
                 "CLIPScore",
+                "RefCLIPScore",
             ],
         )
         writer.writeheader()
@@ -560,7 +636,10 @@ def _parse_prediction_argument(value: str) -> tuple[str, Path]:
 
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Evaluate image captions with CIDEr, BLEU-4, and CLIPScore."
+        description=(
+            "Evaluate image captions with CIDEr, BLEU-4, CLIPScore, and "
+            "RefCLIPScore."
+        )
     )
     parser.add_argument("--inference-manifest", type=Path, required=True)
     parser.add_argument("--references", type=Path, required=True)
@@ -604,7 +683,8 @@ def main(argv: Sequence[str] | None = None) -> None:
             f"{row['rank']:>4}  {row['experiment']:<28} "
             f"CIDEr={row['CIDEr']:.4f} "
             f"BLEU-4={row['BLEU-4']:.4f} "
-            f"CLIPScore={row['CLIPScore']:.4f}"
+            f"CLIPScore={row['CLIPScore']:.4f} "
+            f"RefCLIPScore={row['RefCLIPScore']:.4f}"
         )
     for label, path in artifacts.model_metric_paths.items():
         print(f"{label} metrics: {path}")
