@@ -1,0 +1,18 @@
+services:
+  caption-demo:
+    build: .
+    container_name: clipcap_zerocap_app
+    ports:
+      - "7860:7860"
+    environment:
+      - HF_HOME=/app/weights   # Lưu cache vào folder /app/weights
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    volumes:
+      - ./checkpoints:/app/checkpoints
+      - ./weights:/app/weights
