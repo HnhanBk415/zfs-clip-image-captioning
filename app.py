@@ -1,20 +1,21 @@
 import os
 import sys
 import subprocess
+import time
 from pathlib import Path
-from google.colab import drive
+
 import torch
 import torch.nn.functional as F
-from pathlib import Path
-from transformers import CLIPProcessor, CLIPModel, GPT2LMHeadModel, GPT2TokenizerFast, DynamicCache
-import time
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import gradio as gr
 from PIL import Image
-import torch
-import torch.nn.functional as F
+from transformers import CLIPProcessor, CLIPModel, GPT2LMHeadModel, GPT2TokenizerFast, DynamicCache
+
+# --- UNCOMMENT NẾU CHẠY TRÊN GOOGLE COLAB ---
+# from google.colab import drive
+# drive.mount('/content/drive')
 
 from src.config.zerocap_config import ZeroCapRunConfig
 from src.zerocap.models.model_loader import ZeroCapModels
@@ -24,35 +25,18 @@ from src.clipcap.models.mapping_network import TransformerMapper
 from src.clipcap.models.clipcap_model import ClipCaptionModel
 from src.clipcap.inference.decoding import generate_caption_from_feature
 
-drive.mount('/content/drive')
+# Thêm thư mục hiện tại vào sys.path
+PROJECT_DIR = Path(__file__).resolve().parent
+if str(PROJECT_DIR) not in sys.path:
+    sys.path.insert(0, str(PROJECT_DIR))
 
-# !pip install -q gradio transformers pandas matplotlib
+print("SẴN SÀNG KHỞI TẠO")
 
-DEMO_DIR = Path("/content/drive/MyDrive/Demo_ZFS")
-if (DEMO_DIR / "src").is_dir():
-    if str(DEMO_DIR) not in sys.path:
-        sys.path.insert(0, str(DEMO_DIR))
-    print("Đã kết nối src từ Google Drive")
-else:
-    PROJECT_DIR = Path("/content/zfs-clip-image-captioning")
-    REPO_URL = "https://github.com/HnhanBk415/zfs-clip-image-captioning.git"
-    BRANCH = "main"
-    if not PROJECT_DIR.is_dir():
-        subprocess.run(["git", "clone", "--branch", BRANCH, REPO_URL, str(PROJECT_DIR)], check=True)
-    else:
-        subprocess.run(["git", "-C", str(PROJECT_DIR), "pull", "--ff-only"], check=True)
-    if str(PROJECT_DIR) not in sys.path:
-        sys.path.insert(0, str(PROJECT_DIR))
-    print("Đã clone repo từ GitHub")
-
-print("SẴN SÀNG")
-
+# Patch Cache cho ZeroCap
 def patched_legacy_cache(self, cache):
-    # 1. Nếu đã là tuple/list sẵn
     if isinstance(cache, (tuple, list)) and len(cache) > 0 and isinstance(cache[0], (tuple, list)):
         return tuple((k.detach(), v.detach()) for k, v in cache)
 
-    # 2. Thử to_legacy_cache
     if hasattr(cache, "to_legacy_cache"):
         try:
             res = cache.to_legacy_cache()
@@ -61,18 +45,15 @@ def patched_legacy_cache(self, cache):
         except Exception:
             pass
 
-    # 3. Thử key_cache & value_cache (public / private)
     for k_name, v_name in [("key_cache", "value_cache"), ("_key_cache", "_value_cache"), ("keys", "values")]:
         k_list = getattr(cache, k_name, None)
         v_list = getattr(cache, v_name, None)
         if k_list is not None and v_list is not None and len(k_list) > 0:
             return tuple((k.detach(), v.detach()) for k, v in zip(k_list, v_list))
 
-    # 4. Trích xuất từ cache.layers (Bản Transformers mới nhất)
     if hasattr(cache, "layers"):
         extracted = []
         for l in getattr(cache, "layers"):
-            # Quét tất cả tensor có trong layer object
             tensors = [v for k, v in vars(l).items() if torch.is_tensor(v)] if hasattr(l, "__dict__") else []
             if len(tensors) >= 2:
                 extracted.append((tensors[0].detach(), tensors[1].detach()))
@@ -84,7 +65,6 @@ def patched_legacy_cache(self, cache):
         if len(extracted) == int(self.gpt.config.n_layer):
             return tuple(extracted)
 
-    # 5. Quét đệ quy toàn bộ __dict__ của cache
     if hasattr(cache, "__dict__"):
         for val in cache.__dict__.values():
             if isinstance(val, (list, tuple)) and len(val) == int(self.gpt.config.n_layer):
@@ -102,7 +82,7 @@ def patched_legacy_cache(self, cache):
 
     raise RuntimeError(f"Không thể trích xuất cache. Thuộc tính của cache: {dir(cache)}")
 
-@staticmethod
+
 def patched_cache_for_forward(legacy_cache):
     from transformers import DynamicCache
     if hasattr(DynamicCache, "from_legacy_cache"):
@@ -122,7 +102,7 @@ def patched_cache_for_forward(legacy_cache):
         return tuple(legacy_cache)
 
 ContextOptimizer._legacy_cache = patched_legacy_cache
-ContextOptimizer._cache_for_forward = patched_cache_for_forward
+ContextOptimizer._cache_for_forward = staticmethod(patched_cache_for_forward)
 print("Đã kích hoạt bộ chuyển đổi Cache toàn diện cho ZeroCap")
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -144,8 +124,9 @@ clip_processor = zerocap_models.clip_processor
 gpt2_model = zerocap_models.gpt_model
 gpt2_tokenizer = zerocap_models.gpt_tokenizer
 
-print("\n[2/3] Đang nạp 5 Mapper Checkpoints từ Google Drive")
-CKPT_DIR = Path("/content/drive/MyDrive/Demo_ZFS/checkpoints")
+print("\n[2/3] Đang nạp Mapper Checkpoints...")
+# Đổi đường dẫn checkpoint về thư mục dự án trên máy
+CKPT_DIR = PROJECT_DIR / "checkpoints"
 
 SUBSET_CHECKPOINTS = {
     "1%": CKPT_DIR / "clipcap_1.pt",
@@ -158,7 +139,8 @@ SUBSET_CHECKPOINTS = {
 mappers = {}
 for subset_pct, ckpt_path in SUBSET_CHECKPOINTS.items():
     if not ckpt_path.is_file():
-        raise FileNotFoundError(f"Không tìm thấy: {ckpt_path}")
+        print(f"Cảnh báo: Không tìm thấy checkpoint {ckpt_path}, bỏ qua.")
+        continue
 
     mapper = TransformerMapper(
         clip_dim=512,
@@ -183,8 +165,7 @@ if torch.cuda.is_available():
     allocated = torch.cuda.memory_allocated() / (1024 ** 3)
     reserved = torch.cuda.memory_reserved() / (1024 ** 3)
     print(f"VRAM: {allocated:.2f} GB / {reserved:.2f} GB")
-print("SẴN SÀNG")
-
+print("SẴN SÀNG TẢI INTERFACE")
 
 
 def plot_latency_comparison(df: pd.DataFrame):
@@ -209,7 +190,7 @@ def plot_latency_comparison(df: pd.DataFrame):
         ax.text(width + 0.05, bar.get_y() + bar.get_height()/2, f"{width:.2f}s",
                 ha="left", va="center", fontsize=9, fontweight="bold")
 
-    ax.invert_yaxis()  # Đưa ClipCap 1% lên đầu
+    ax.invert_yaxis()
     plt.tight_layout()
     return fig
 
@@ -242,7 +223,7 @@ def generate_captions(input_img, progress=gr.Progress()):
 
     total_mappers = len(mappers)
     for idx, (pct, mapper_module) in enumerate(mappers.items()):
-        progress(0.1 + (idx / total_mappers) * 0.4, desc=f"[2/3] ClipCap đang sinh từ với Mapper {pct}")
+        progress(0.1 + (idx / (total_mappers if total_mappers > 0 else 1)) * 0.4, desc=f"[2/3] ClipCap đang sinh từ với Mapper {pct}")
 
         if torch.cuda.is_available():
             torch.cuda.reset_peak_memory_stats()
@@ -282,7 +263,6 @@ def generate_captions(input_img, progress=gr.Progress()):
     progress(0.6, desc="[3/3] ZeroCap đang tối ưu hóa context (15 tokens)")
     start_zc = time.perf_counter()
 
-    # Chạy ZeroCap Generator
     zc_result = zerocap_captioner.generator.generate(image_feature=image_embed)
     zc_caption = zc_result["caption"]
 
@@ -303,7 +283,7 @@ def generate_captions(input_img, progress=gr.Progress()):
     yield df, fig
 
 # Interface
-EXAMPLES_DIR = Path("/content/drive/MyDrive/Demo_ZFS/examples")
+EXAMPLES_DIR = PROJECT_DIR / "examples"
 example_images = []
 if EXAMPLES_DIR.is_dir():
     example_images = [
@@ -356,10 +336,11 @@ with gr.Blocks(theme=gr.themes.Soft(), css=custom_css, title="Demo ClipCap vs Ze
         outputs=[output_df, output_plot],
     )
 
-demo.queue(max_size=5).launch(share=True, debug=True)
-
-# To run: !pip install -q gradio transformers pandas matplotlib
-# Haven't cloned: !git clone https://github.com/HnhanBk415/zfs-clip-image-captioning.git
-# Already cloned:
-# %cd /content/zfs-clip-image-captioning
-# !git pull origin main
+if __name__ == "__main__":
+    # Thêm server_name="0.0.0.0" và server_port=7860
+    demo.queue(max_size=5).launch(
+        server_name="0.0.0.0", 
+        server_port=7860, 
+        share=False, 
+        inbrowser=True
+    )
