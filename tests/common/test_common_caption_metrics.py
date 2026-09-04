@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import csv
 import json
+import shutil
+import subprocess
 import sys
 import types
 from pathlib import Path
@@ -73,15 +75,14 @@ def test_prediction_coverage_rejects_missing_or_extra_images():
         )
 
 
-def test_coco_metrics_constructs_ptb_tokenizer_without_arguments(
+def test_coco_metrics_uses_checked_tokenizer_and_standard_scale(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    class FakeTokenizer:
-        def __init__(self):
-            pass
+    calls = []
 
-        def tokenize(self, captions):
-            return captions
+    def fake_tokenize(captions):
+        calls.append(captions)
+        return captions
 
     class FakeBleu:
         def __init__(self, order):
@@ -109,10 +110,10 @@ def test_coco_metrics_constructs_ptb_tokenizer_without_arguments(
     modules = {name: types.ModuleType(name) for name in module_names}
     modules["pycocoevalcap.bleu.bleu"].Bleu = FakeBleu
     modules["pycocoevalcap.cider.cider"].Cider = FakeCider
-    modules["pycocoevalcap.tokenizer.ptbtokenizer"].PTBTokenizer = FakeTokenizer
     for name, module in modules.items():
         monkeypatch.setitem(sys.modules, name, module)
     monkeypatch.setattr(caption_metrics.shutil, "which", lambda command: "java")
+    monkeypatch.setattr(caption_metrics, "_tokenize_coco_captions", fake_tokenize)
 
     result = caption_metrics.evaluate_coco_metrics(
         {"image.jpg": ["reference"]},
@@ -121,6 +122,123 @@ def test_coco_metrics_constructs_ptb_tokenizer_without_arguments(
 
     assert result["CIDEr"] == pytest.approx(50.0)
     assert result["BLEU-4"] == pytest.approx(40.0)
+    assert calls == [{"image.jpg": ["reference"]}, {"image.jpg": ["prediction"]}]
+
+
+def _mock_ptb_output(monkeypatch, stdout, stderr=""):
+    def run(command, **kwargs):
+        assert command[-3:] == [
+            "edu.stanford.nlp.process.PTBTokenizer", "-preserveLines", "-lowerCase"
+        ]
+        assert kwargs["check"] is True
+        assert kwargs["capture_output"] is True
+        assert kwargs["encoding"] == "utf-8"
+        assert kwargs["timeout"] == 120
+        return subprocess.CompletedProcess(command, 0, stdout, stderr)
+
+    monkeypatch.setattr(caption_metrics.shutil, "which", lambda _: "java")
+    monkeypatch.setattr(caption_metrics.subprocess, "run", run)
+
+
+def test_ptb_preserves_image_and_reference_order_with_container_warnings(monkeypatch):
+    warning_lines = "".join(
+        f"[0.001s][warning][os,container] Cgroup {kind} controller path "
+        "at '/sys/fs/cgroup' seems to have moved to '/..', "
+        "detected limits won't be accurate\n"
+        for kind in ("memory", "cpu")
+    )
+    output = "a dog .\nan animal !\na swimmer .\n"
+    captions = {"z.jpg": ["A dog.", "An animal!"], "a.jpg": ["A swimmer."]}
+    _mock_ptb_output(monkeypatch, output)
+    clean = caption_metrics._tokenize_coco_captions(captions)
+    _mock_ptb_output(monkeypatch, warning_lines + output, "PTBTokenizer tokenized 9 tokens")
+    with pytest.warns(RuntimeWarning, match="Ignored 2 JVM"):
+        checked = caption_metrics._tokenize_coco_captions(captions)
+    assert checked == clean == {"z.jpg": ["a dog", "an animal"], "a.jpg": ["a swimmer"]}
+
+
+@pytest.mark.parametrize("output", [
+    "unexpected Java log\na dog\na swimmer\n",
+    "a dog\n",
+    "",
+    "a dog\na swimmer\n\n",
+])
+def test_ptb_rejects_extra_or_missing_output_lines(monkeypatch, output):
+    _mock_ptb_output(monkeypatch, output)
+    with pytest.raises(RuntimeError, match="line count mismatch"):
+        caption_metrics._tokenize_coco_captions({"a": ["a dog"], "b": ["a swimmer"]})
+
+
+def test_ptb_normalizes_caption_line_breaks_without_shifting_ids(monkeypatch):
+    _mock_ptb_output(monkeypatch, "a dog\na swimmer\n")
+    original_run = caption_metrics.subprocess.run
+
+    def run(command, **kwargs):
+        assert kwargs["input"] == "A dog\nA swimmer\n"
+        return original_run(command, **kwargs)
+
+    monkeypatch.setattr(caption_metrics.subprocess, "run", run)
+    assert caption_metrics._tokenize_coco_captions(
+        {"a": ["A\r\ndog"], "b": ["A\nswimmer"]}
+    ) == {"a": ["a dog"], "b": ["a swimmer"]}
+
+
+@pytest.mark.parametrize("error, message", [
+    (subprocess.CalledProcessError(1, ["java"], stderr="Java failed"), "exit 1.*Java failed"),
+    (subprocess.TimeoutExpired(["java"], 120), "timed out"),
+])
+def test_ptb_rejects_java_failure(monkeypatch, error, message):
+    monkeypatch.setattr(caption_metrics.shutil, "which", lambda _: "java")
+
+    def run(*args, **kwargs):
+        raise error
+
+    monkeypatch.setattr(caption_metrics.subprocess, "run", run)
+    with pytest.raises(RuntimeError, match=message):
+        caption_metrics._tokenize_coco_captions({"a": ["a dog"]})
+
+
+@pytest.mark.skipif(shutil.which("java") is None, reason="Java required for Stanford integration")
+def test_real_stanford_tokenization_and_perfect_reference_bleu():
+    refs = {
+        "b.jpg": ["A girl swims in a blue pool."],
+        "a.jpg": ["A brown dog runs through the grass."],
+    }
+    tokens = caption_metrics._tokenize_coco_captions(refs)
+    assert tokens == {
+        "b.jpg": ["a girl swims in a blue pool"],
+        "a.jpg": ["a brown dog runs through the grass"],
+    }
+    result = caption_metrics.evaluate_coco_metrics(refs, {i: c[0] for i, c in refs.items()})
+    assert result["BLEU-4"] == pytest.approx(100.0)
+    assert list(result["per_image"]) == ["a.jpg", "b.jpg"]
+    assert all(row["BLEU-4"] == pytest.approx(100.0) for row in result["per_image"].values())
+
+
+@pytest.mark.skipif(shutil.which("java") is None, reason="Java required for Stanford integration")
+def test_real_scores_unchanged_when_java_emits_two_container_warnings(monkeypatch):
+    refs = {
+        "b.jpg": ["A girl swims in a blue pool."] * 5,
+        "a.jpg": ["A brown dog runs through the grass."] * 5,
+        "c.jpg": ["A man rides a red bicycle."] * 5,
+    }
+    predictions = {i: captions[0] for i, captions in refs.items()}
+    clean = caption_metrics.evaluate_coco_metrics(refs, predictions)
+    original_run = caption_metrics.subprocess.run
+
+    def run_with_warnings(*args, **kwargs):
+        completed = original_run(*args, **kwargs)
+        completed.stdout = (
+            "[0.001s][warning][os,container] Cgroup memory controller path moved\n"
+            "[0.001s][warning][os,container] Cgroup cpu controller path moved\n"
+            + completed.stdout
+        )
+        return completed
+
+    monkeypatch.setattr(caption_metrics.subprocess, "run", run_with_warnings)
+    with pytest.warns(RuntimeWarning, match="Ignored 2 JVM"):
+        checked = caption_metrics.evaluate_coco_metrics(refs, predictions)
+    assert checked == clean
 
 
 def test_clipscore_uses_published_prefix_weight_and_refclipscore(
