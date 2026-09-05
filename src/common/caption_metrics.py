@@ -4,7 +4,10 @@ import argparse
 import csv
 import hashlib
 import json
+import re
 import shutil
+import subprocess
+import warnings
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -186,6 +189,92 @@ def validate_prediction_coverage(
         )
 
 
+def _tokenize_coco_captions(
+    captions: Mapping[str, Sequence[str]],
+) -> dict[str, list[str]]:
+    """Use Stanford PTB rules without trusting JVM stdout as caption-only data."""
+    from pycocoevalcap.tokenizer import ptbtokenizer
+
+    java = shutil.which("java")
+    if java is None:
+        raise RuntimeError("CIDEr/BLEU-4 evaluation requires Java in PATH")
+    jar = Path(ptbtokenizer.__file__).resolve().parent / (
+        ptbtokenizer.STANFORD_CORENLP_3_4_1_JAR
+    )
+    image_ids: list[str] = []
+    sentences: list[str] = []
+    for image_id, items in captions.items():
+        if not items:
+            raise ValueError(f"No captions to tokenize for {image_id}")
+        for caption in items:
+            if not isinstance(caption, str) or not caption.strip():
+                raise ValueError(f"Invalid caption to tokenize for {image_id}")
+            image_ids.append(image_id)
+            # One physical input line per caption, including Windows newlines.
+            sentences.append(" ".join(caption.split()))
+    if not sentences:
+        raise ValueError("No captions to tokenize")
+    try:
+        completed = subprocess.run(
+            [
+                java,
+                "-Dfile.encoding=UTF-8",
+                "-cp",
+                str(jar),
+                "edu.stanford.nlp.process.PTBTokenizer",
+                "-preserveLines",
+                "-lowerCase",
+            ],
+            input="\n".join(sentences) + "\n",
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=True,
+            timeout=120,
+        )
+    except subprocess.CalledProcessError as error:
+        raise RuntimeError(
+            f"Stanford PTBTokenizer failed (exit {error.returncode}): "
+            f"{(error.stderr or '')[-2000:]}"
+        ) from error
+    except subprocess.TimeoutExpired as error:
+        raise RuntimeError("Stanford PTBTokenizer timed out after 120 seconds") from error
+
+    lines = completed.stdout.splitlines()
+    # Recent JVMs on containers can emit these startup warnings on stdout.
+    # Only discard this known prefix; never truncate or drop arbitrary lines.
+    container_warning = re.compile(
+        r"^\[\d+(?:\.\d+)?s\]\[warning\]\[os,container\]\s+"
+        r"[Cc]group (?:memory|cpu) controller path .*$"
+    )
+    warning_count = 0
+    while lines and container_warning.fullmatch(lines[0]):
+        lines.pop(0)
+        warning_count += 1
+    if warning_count:
+        warnings.warn(
+            f"Ignored {warning_count} JVM container warning lines before PTB output",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+    if len(lines) != len(sentences):
+        raise RuntimeError(
+            "PTBTokenizer output line count mismatch: "
+            f"expected {len(sentences)}, got {len(lines)}. "
+            "Refusing to pair captions with image IDs; check Java stdout/stderr. "
+            f"stderr: {completed.stderr[-2000:]}"
+        )
+    tokenized: dict[str, list[str]] = {image_id: [] for image_id in captions}
+    for image_id, line in zip(image_ids, lines, strict=True):
+        tokenized[image_id].append(
+            " ".join(
+                word for word in line.rstrip().split(" ")
+                if word not in ptbtokenizer.PUNCTUATIONS
+            )
+        )
+    return tokenized
+
+
 def evaluate_coco_metrics(
     references: Mapping[str, Sequence[str]],
     predictions: Mapping[str, str],
@@ -194,20 +283,16 @@ def evaluate_coco_metrics(
         raise RuntimeError("CIDEr/BLEU-4 evaluation requires Java in PATH")
     from pycocoevalcap.bleu.bleu import Bleu
     from pycocoevalcap.cider.cider import Cider
-    from pycocoevalcap.tokenizer.ptbtokenizer import PTBTokenizer
-
+    if not references:
+        raise ValueError("No references to evaluate")
+    validate_prediction_coverage(list(references), predictions, "COCO metrics")
     image_ids = sorted(references)
-    raw_ground_truth = {
-        image_id: [{"caption": caption} for caption in references[image_id]]
-        for image_id in image_ids
-    }
-    raw_results = {
-        image_id: [{"caption": predictions[image_id]}]
-        for image_id in image_ids
-    }
-    tokenizer = PTBTokenizer()
-    ground_truth = tokenizer.tokenize(raw_ground_truth)
-    results = tokenizer.tokenize(raw_results)
+    ground_truth = _tokenize_coco_captions(
+        {image_id: references[image_id] for image_id in image_ids}
+    )
+    results = _tokenize_coco_captions(
+        {image_id: [predictions[image_id]] for image_id in image_ids}
+    )
     bleu_score, bleu_per_image = Bleu(4).compute_score(
         ground_truth,
         results,
@@ -223,6 +308,7 @@ def evaluate_coco_metrics(
             image_ids,
             cider_per_image,
             bleu_per_image[3],
+            strict=True,
         )
     }
     return {
