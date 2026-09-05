@@ -231,3 +231,5 @@ demo/checkpoints/
 
 # Training artifacts
 outputs/
+.dockerignore
+/weights

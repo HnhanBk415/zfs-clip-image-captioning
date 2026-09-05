@@ -1,0 +1,7 @@
+{
+  "source_url": "https://raw.githubusercontent.com/YoadTew/zero-shot-image-to-text/main/forbidden_tokens.npy",
+  "sha256": "2e838917bd10824130612f5e7fdbb389e6ee645a59e701cea6bb4126ba3757b4",
+  "count": 917,
+  "tokenizer": "openai-community/gpt2",
+  "vocab_size": 50257
+}

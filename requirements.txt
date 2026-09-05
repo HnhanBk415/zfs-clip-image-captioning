@@ -3,6 +3,7 @@ matplotlib
 Pillow
 tqdm
 numpy
+gradio
 
 # Thư viện hỗ trợ model
 torch
